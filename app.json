@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MutqinApp",
+    "name": "مُتقِن",
     "slug": "MutqinApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,17 +13,49 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ahmedzaki254.mutqinapp",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
+      "package": "com.ahmedzaki254.mutqinapp",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#10b981"
       },
+      "permissions": [
+        "RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-font",
+      "expo-audio"
+    ],
+    "assetBundlePatterns": [
+      "assets/mushaf/**",
+      "assets/database/**",
+      "assets/**"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c8f40347-f14f-43d8-b7dc-d464123aed3b"
+      }
+    },
+    "owner": "ahmedzaki254"
   }
 }

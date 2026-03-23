@@ -1,0 +1,930 @@
+/**
+ * components/recite/MushafPage.tsx
+ *
+ * Renders a single Hafs-Default Mushaf page using:
+ *   · Layer 1 — Background View (#fdf6e3, Mushaf paper color)
+ *   · Layer 2 — Bundled PNG image `assets/mushaf/a{N}.png` via require()
+ *               resizeMode="stretch" to match the 1000-unit per-mille grid
+ *   · Layer 3 — Highlight overlays via MushafHighlights (positioned with the
+ *                 exact Java formula: screenPx = (dbValue × dim) / 1000)
+ *
+ * NOTE: The getPageSource switch (lines below) must remain in this file.
+ *       Metro's static analyser requires require() calls to live in the same
+ *       module where they are used — they cannot be moved to a separate file.
+ *
+ * Architecture:
+ *   - mushaf-page-types.ts     → MushafPageProps interface
+ *   - mushaf-page-constants.ts → colors & rendering constants
+ *   - MushafHighlights.tsx     → highlight overlay rendering component
+ */
+
+import * as React from 'react';
+import {
+    View,
+    Image,
+    StyleSheet,
+    ActivityIndicator,
+    Text,
+} from 'react-native';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withTiming,
+    runOnJS,
+} from 'react-native-reanimated';
+import {
+    GestureDetector,
+    Gesture,
+} from 'react-native-gesture-handler';
+
+import { useAyatDB } from '../../lib/SQLiteProvider';
+import {
+    queryPageCoords,
+    hitTestPage,
+    AyahBoundingBox,
+} from '../../lib/sqlite-db';
+import { lightImpact, mediumImpact } from '../../lib/haptics';
+import { MushafPageProps } from './mushaf-page-types';
+import { MUSHAF_BG } from './mushaf-page-constants';
+import MushafHighlights from './MushafHighlights';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mushaf page image map
+// All 604 pages are bundled in assets/mushaf/a{N}.png.
+// Metro requires static require() calls, so we pre-build a lookup table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// We import the first few explicitly and use a dynamic helper for the rest.
+// Because Metro can't bundle truly dynamic requires, we use a pre-generated map.
+// The map below is compact: it reads as require('../assets/mushaf/a1.png'), etc.
+// getPageSource() below handles all 604 pages via a switch statement.
+// Metro statically analyses require() calls inside it.
+
+export function getPageSource(page: number): any {
+    // Metro requires static string literals inside require().
+    // We use a switch over page numbers 1-604.
+    switch (page) {
+        case 1: return require('../../assets/mushaf/a1.png');
+        case 2: return require('../../assets/mushaf/a2.png');
+        case 3: return require('../../assets/mushaf/a3.png');
+        case 4: return require('../../assets/mushaf/a4.png');
+        case 5: return require('../../assets/mushaf/a5.png');
+        case 6: return require('../../assets/mushaf/a6.png');
+        case 7: return require('../../assets/mushaf/a7.png');
+        case 8: return require('../../assets/mushaf/a8.png');
+        case 9: return require('../../assets/mushaf/a9.png');
+        case 10: return require('../../assets/mushaf/a10.png');
+        case 11: return require('../../assets/mushaf/a11.png');
+        case 12: return require('../../assets/mushaf/a12.png');
+        case 13: return require('../../assets/mushaf/a13.png');
+        case 14: return require('../../assets/mushaf/a14.png');
+        case 15: return require('../../assets/mushaf/a15.png');
+        case 16: return require('../../assets/mushaf/a16.png');
+        case 17: return require('../../assets/mushaf/a17.png');
+        case 18: return require('../../assets/mushaf/a18.png');
+        case 19: return require('../../assets/mushaf/a19.png');
+        case 20: return require('../../assets/mushaf/a20.png');
+        case 21: return require('../../assets/mushaf/a21.png');
+        case 22: return require('../../assets/mushaf/a22.png');
+        case 23: return require('../../assets/mushaf/a23.png');
+        case 24: return require('../../assets/mushaf/a24.png');
+        case 25: return require('../../assets/mushaf/a25.png');
+        case 26: return require('../../assets/mushaf/a26.png');
+        case 27: return require('../../assets/mushaf/a27.png');
+        case 28: return require('../../assets/mushaf/a28.png');
+        case 29: return require('../../assets/mushaf/a29.png');
+        case 30: return require('../../assets/mushaf/a30.png');
+        case 31: return require('../../assets/mushaf/a31.png');
+        case 32: return require('../../assets/mushaf/a32.png');
+        case 33: return require('../../assets/mushaf/a33.png');
+        case 34: return require('../../assets/mushaf/a34.png');
+        case 35: return require('../../assets/mushaf/a35.png');
+        case 36: return require('../../assets/mushaf/a36.png');
+        case 37: return require('../../assets/mushaf/a37.png');
+        case 38: return require('../../assets/mushaf/a38.png');
+        case 39: return require('../../assets/mushaf/a39.png');
+        case 40: return require('../../assets/mushaf/a40.png');
+        case 41: return require('../../assets/mushaf/a41.png');
+        case 42: return require('../../assets/mushaf/a42.png');
+        case 43: return require('../../assets/mushaf/a43.png');
+        case 44: return require('../../assets/mushaf/a44.png');
+        case 45: return require('../../assets/mushaf/a45.png');
+        case 46: return require('../../assets/mushaf/a46.png');
+        case 47: return require('../../assets/mushaf/a47.png');
+        case 48: return require('../../assets/mushaf/a48.png');
+        case 49: return require('../../assets/mushaf/a49.png');
+        case 50: return require('../../assets/mushaf/a50.png');
+        case 51: return require('../../assets/mushaf/a51.png');
+        case 52: return require('../../assets/mushaf/a52.png');
+        case 53: return require('../../assets/mushaf/a53.png');
+        case 54: return require('../../assets/mushaf/a54.png');
+        case 55: return require('../../assets/mushaf/a55.png');
+        case 56: return require('../../assets/mushaf/a56.png');
+        case 57: return require('../../assets/mushaf/a57.png');
+        case 58: return require('../../assets/mushaf/a58.png');
+        case 59: return require('../../assets/mushaf/a59.png');
+        case 60: return require('../../assets/mushaf/a60.png');
+        case 61: return require('../../assets/mushaf/a61.png');
+        case 62: return require('../../assets/mushaf/a62.png');
+        case 63: return require('../../assets/mushaf/a63.png');
+        case 64: return require('../../assets/mushaf/a64.png');
+        case 65: return require('../../assets/mushaf/a65.png');
+        case 66: return require('../../assets/mushaf/a66.png');
+        case 67: return require('../../assets/mushaf/a67.png');
+        case 68: return require('../../assets/mushaf/a68.png');
+        case 69: return require('../../assets/mushaf/a69.png');
+        case 70: return require('../../assets/mushaf/a70.png');
+        case 71: return require('../../assets/mushaf/a71.png');
+        case 72: return require('../../assets/mushaf/a72.png');
+        case 73: return require('../../assets/mushaf/a73.png');
+        case 74: return require('../../assets/mushaf/a74.png');
+        case 75: return require('../../assets/mushaf/a75.png');
+        case 76: return require('../../assets/mushaf/a76.png');
+        case 77: return require('../../assets/mushaf/a77.png');
+        case 78: return require('../../assets/mushaf/a78.png');
+        case 79: return require('../../assets/mushaf/a79.png');
+        case 80: return require('../../assets/mushaf/a80.png');
+        case 81: return require('../../assets/mushaf/a81.png');
+        case 82: return require('../../assets/mushaf/a82.png');
+        case 83: return require('../../assets/mushaf/a83.png');
+        case 84: return require('../../assets/mushaf/a84.png');
+        case 85: return require('../../assets/mushaf/a85.png');
+        case 86: return require('../../assets/mushaf/a86.png');
+        case 87: return require('../../assets/mushaf/a87.png');
+        case 88: return require('../../assets/mushaf/a88.png');
+        case 89: return require('../../assets/mushaf/a89.png');
+        case 90: return require('../../assets/mushaf/a90.png');
+        case 91: return require('../../assets/mushaf/a91.png');
+        case 92: return require('../../assets/mushaf/a92.png');
+        case 93: return require('../../assets/mushaf/a93.png');
+        case 94: return require('../../assets/mushaf/a94.png');
+        case 95: return require('../../assets/mushaf/a95.png');
+        case 96: return require('../../assets/mushaf/a96.png');
+        case 97: return require('../../assets/mushaf/a97.png');
+        case 98: return require('../../assets/mushaf/a98.png');
+        case 99: return require('../../assets/mushaf/a99.png');
+        case 100: return require('../../assets/mushaf/a100.png');
+        case 101: return require('../../assets/mushaf/a101.png');
+        case 102: return require('../../assets/mushaf/a102.png');
+        case 103: return require('../../assets/mushaf/a103.png');
+        case 104: return require('../../assets/mushaf/a104.png');
+        case 105: return require('../../assets/mushaf/a105.png');
+        case 106: return require('../../assets/mushaf/a106.png');
+        case 107: return require('../../assets/mushaf/a107.png');
+        case 108: return require('../../assets/mushaf/a108.png');
+        case 109: return require('../../assets/mushaf/a109.png');
+        case 110: return require('../../assets/mushaf/a110.png');
+        case 111: return require('../../assets/mushaf/a111.png');
+        case 112: return require('../../assets/mushaf/a112.png');
+        case 113: return require('../../assets/mushaf/a113.png');
+        case 114: return require('../../assets/mushaf/a114.png');
+        case 115: return require('../../assets/mushaf/a115.png');
+        case 116: return require('../../assets/mushaf/a116.png');
+        case 117: return require('../../assets/mushaf/a117.png');
+        case 118: return require('../../assets/mushaf/a118.png');
+        case 119: return require('../../assets/mushaf/a119.png');
+        case 120: return require('../../assets/mushaf/a120.png');
+        case 121: return require('../../assets/mushaf/a121.png');
+        case 122: return require('../../assets/mushaf/a122.png');
+        case 123: return require('../../assets/mushaf/a123.png');
+        case 124: return require('../../assets/mushaf/a124.png');
+        case 125: return require('../../assets/mushaf/a125.png');
+        case 126: return require('../../assets/mushaf/a126.png');
+        case 127: return require('../../assets/mushaf/a127.png');
+        case 128: return require('../../assets/mushaf/a128.png');
+        case 129: return require('../../assets/mushaf/a129.png');
+        case 130: return require('../../assets/mushaf/a130.png');
+        case 131: return require('../../assets/mushaf/a131.png');
+        case 132: return require('../../assets/mushaf/a132.png');
+        case 133: return require('../../assets/mushaf/a133.png');
+        case 134: return require('../../assets/mushaf/a134.png');
+        case 135: return require('../../assets/mushaf/a135.png');
+        case 136: return require('../../assets/mushaf/a136.png');
+        case 137: return require('../../assets/mushaf/a137.png');
+        case 138: return require('../../assets/mushaf/a138.png');
+        case 139: return require('../../assets/mushaf/a139.png');
+        case 140: return require('../../assets/mushaf/a140.png');
+        case 141: return require('../../assets/mushaf/a141.png');
+        case 142: return require('../../assets/mushaf/a142.png');
+        case 143: return require('../../assets/mushaf/a143.png');
+        case 144: return require('../../assets/mushaf/a144.png');
+        case 145: return require('../../assets/mushaf/a145.png');
+        case 146: return require('../../assets/mushaf/a146.png');
+        case 147: return require('../../assets/mushaf/a147.png');
+        case 148: return require('../../assets/mushaf/a148.png');
+        case 149: return require('../../assets/mushaf/a149.png');
+        case 150: return require('../../assets/mushaf/a150.png');
+        case 151: return require('../../assets/mushaf/a151.png');
+        case 152: return require('../../assets/mushaf/a152.png');
+        case 153: return require('../../assets/mushaf/a153.png');
+        case 154: return require('../../assets/mushaf/a154.png');
+        case 155: return require('../../assets/mushaf/a155.png');
+        case 156: return require('../../assets/mushaf/a156.png');
+        case 157: return require('../../assets/mushaf/a157.png');
+        case 158: return require('../../assets/mushaf/a158.png');
+        case 159: return require('../../assets/mushaf/a159.png');
+        case 160: return require('../../assets/mushaf/a160.png');
+        case 161: return require('../../assets/mushaf/a161.png');
+        case 162: return require('../../assets/mushaf/a162.png');
+        case 163: return require('../../assets/mushaf/a163.png');
+        case 164: return require('../../assets/mushaf/a164.png');
+        case 165: return require('../../assets/mushaf/a165.png');
+        case 166: return require('../../assets/mushaf/a166.png');
+        case 167: return require('../../assets/mushaf/a167.png');
+        case 168: return require('../../assets/mushaf/a168.png');
+        case 169: return require('../../assets/mushaf/a169.png');
+        case 170: return require('../../assets/mushaf/a170.png');
+        case 171: return require('../../assets/mushaf/a171.png');
+        case 172: return require('../../assets/mushaf/a172.png');
+        case 173: return require('../../assets/mushaf/a173.png');
+        case 174: return require('../../assets/mushaf/a174.png');
+        case 175: return require('../../assets/mushaf/a175.png');
+        case 176: return require('../../assets/mushaf/a176.png');
+        case 177: return require('../../assets/mushaf/a177.png');
+        case 178: return require('../../assets/mushaf/a178.png');
+        case 179: return require('../../assets/mushaf/a179.png');
+        case 180: return require('../../assets/mushaf/a180.png');
+        case 181: return require('../../assets/mushaf/a181.png');
+        case 182: return require('../../assets/mushaf/a182.png');
+        case 183: return require('../../assets/mushaf/a183.png');
+        case 184: return require('../../assets/mushaf/a184.png');
+        case 185: return require('../../assets/mushaf/a185.png');
+        case 186: return require('../../assets/mushaf/a186.png');
+        case 187: return require('../../assets/mushaf/a187.png');
+        case 188: return require('../../assets/mushaf/a188.png');
+        case 189: return require('../../assets/mushaf/a189.png');
+        case 190: return require('../../assets/mushaf/a190.png');
+        case 191: return require('../../assets/mushaf/a191.png');
+        case 192: return require('../../assets/mushaf/a192.png');
+        case 193: return require('../../assets/mushaf/a193.png');
+        case 194: return require('../../assets/mushaf/a194.png');
+        case 195: return require('../../assets/mushaf/a195.png');
+        case 196: return require('../../assets/mushaf/a196.png');
+        case 197: return require('../../assets/mushaf/a197.png');
+        case 198: return require('../../assets/mushaf/a198.png');
+        case 199: return require('../../assets/mushaf/a199.png');
+        case 200: return require('../../assets/mushaf/a200.png');
+        case 201: return require('../../assets/mushaf/a201.png');
+        case 202: return require('../../assets/mushaf/a202.png');
+        case 203: return require('../../assets/mushaf/a203.png');
+        case 204: return require('../../assets/mushaf/a204.png');
+        case 205: return require('../../assets/mushaf/a205.png');
+        case 206: return require('../../assets/mushaf/a206.png');
+        case 207: return require('../../assets/mushaf/a207.png');
+        case 208: return require('../../assets/mushaf/a208.png');
+        case 209: return require('../../assets/mushaf/a209.png');
+        case 210: return require('../../assets/mushaf/a210.png');
+        case 211: return require('../../assets/mushaf/a211.png');
+        case 212: return require('../../assets/mushaf/a212.png');
+        case 213: return require('../../assets/mushaf/a213.png');
+        case 214: return require('../../assets/mushaf/a214.png');
+        case 215: return require('../../assets/mushaf/a215.png');
+        case 216: return require('../../assets/mushaf/a216.png');
+        case 217: return require('../../assets/mushaf/a217.png');
+        case 218: return require('../../assets/mushaf/a218.png');
+        case 219: return require('../../assets/mushaf/a219.png');
+        case 220: return require('../../assets/mushaf/a220.png');
+        case 221: return require('../../assets/mushaf/a221.png');
+        case 222: return require('../../assets/mushaf/a222.png');
+        case 223: return require('../../assets/mushaf/a223.png');
+        case 224: return require('../../assets/mushaf/a224.png');
+        case 225: return require('../../assets/mushaf/a225.png');
+        case 226: return require('../../assets/mushaf/a226.png');
+        case 227: return require('../../assets/mushaf/a227.png');
+        case 228: return require('../../assets/mushaf/a228.png');
+        case 229: return require('../../assets/mushaf/a229.png');
+        case 230: return require('../../assets/mushaf/a230.png');
+        case 231: return require('../../assets/mushaf/a231.png');
+        case 232: return require('../../assets/mushaf/a232.png');
+        case 233: return require('../../assets/mushaf/a233.png');
+        case 234: return require('../../assets/mushaf/a234.png');
+        case 235: return require('../../assets/mushaf/a235.png');
+        case 236: return require('../../assets/mushaf/a236.png');
+        case 237: return require('../../assets/mushaf/a237.png');
+        case 238: return require('../../assets/mushaf/a238.png');
+        case 239: return require('../../assets/mushaf/a239.png');
+        case 240: return require('../../assets/mushaf/a240.png');
+        case 241: return require('../../assets/mushaf/a241.png');
+        case 242: return require('../../assets/mushaf/a242.png');
+        case 243: return require('../../assets/mushaf/a243.png');
+        case 244: return require('../../assets/mushaf/a244.png');
+        case 245: return require('../../assets/mushaf/a245.png');
+        case 246: return require('../../assets/mushaf/a246.png');
+        case 247: return require('../../assets/mushaf/a247.png');
+        case 248: return require('../../assets/mushaf/a248.png');
+        case 249: return require('../../assets/mushaf/a249.png');
+        case 250: return require('../../assets/mushaf/a250.png');
+        case 251: return require('../../assets/mushaf/a251.png');
+        case 252: return require('../../assets/mushaf/a252.png');
+        case 253: return require('../../assets/mushaf/a253.png');
+        case 254: return require('../../assets/mushaf/a254.png');
+        case 255: return require('../../assets/mushaf/a255.png');
+        case 256: return require('../../assets/mushaf/a256.png');
+        case 257: return require('../../assets/mushaf/a257.png');
+        case 258: return require('../../assets/mushaf/a258.png');
+        case 259: return require('../../assets/mushaf/a259.png');
+        case 260: return require('../../assets/mushaf/a260.png');
+        case 261: return require('../../assets/mushaf/a261.png');
+        case 262: return require('../../assets/mushaf/a262.png');
+        case 263: return require('../../assets/mushaf/a263.png');
+        case 264: return require('../../assets/mushaf/a264.png');
+        case 265: return require('../../assets/mushaf/a265.png');
+        case 266: return require('../../assets/mushaf/a266.png');
+        case 267: return require('../../assets/mushaf/a267.png');
+        case 268: return require('../../assets/mushaf/a268.png');
+        case 269: return require('../../assets/mushaf/a269.png');
+        case 270: return require('../../assets/mushaf/a270.png');
+        case 271: return require('../../assets/mushaf/a271.png');
+        case 272: return require('../../assets/mushaf/a272.png');
+        case 273: return require('../../assets/mushaf/a273.png');
+        case 274: return require('../../assets/mushaf/a274.png');
+        case 275: return require('../../assets/mushaf/a275.png');
+        case 276: return require('../../assets/mushaf/a276.png');
+        case 277: return require('../../assets/mushaf/a277.png');
+        case 278: return require('../../assets/mushaf/a278.png');
+        case 279: return require('../../assets/mushaf/a279.png');
+        case 280: return require('../../assets/mushaf/a280.png');
+        case 281: return require('../../assets/mushaf/a281.png');
+        case 282: return require('../../assets/mushaf/a282.png');
+        case 283: return require('../../assets/mushaf/a283.png');
+        case 284: return require('../../assets/mushaf/a284.png');
+        case 285: return require('../../assets/mushaf/a285.png');
+        case 286: return require('../../assets/mushaf/a286.png');
+        case 287: return require('../../assets/mushaf/a287.png');
+        case 288: return require('../../assets/mushaf/a288.png');
+        case 289: return require('../../assets/mushaf/a289.png');
+        case 290: return require('../../assets/mushaf/a290.png');
+        case 291: return require('../../assets/mushaf/a291.png');
+        case 292: return require('../../assets/mushaf/a292.png');
+        case 293: return require('../../assets/mushaf/a293.png');
+        case 294: return require('../../assets/mushaf/a294.png');
+        case 295: return require('../../assets/mushaf/a295.png');
+        case 296: return require('../../assets/mushaf/a296.png');
+        case 297: return require('../../assets/mushaf/a297.png');
+        case 298: return require('../../assets/mushaf/a298.png');
+        case 299: return require('../../assets/mushaf/a299.png');
+        case 300: return require('../../assets/mushaf/a300.png');
+        case 301: return require('../../assets/mushaf/a301.png');
+        case 302: return require('../../assets/mushaf/a302.png');
+        case 303: return require('../../assets/mushaf/a303.png');
+        case 304: return require('../../assets/mushaf/a304.png');
+        case 305: return require('../../assets/mushaf/a305.png');
+        case 306: return require('../../assets/mushaf/a306.png');
+        case 307: return require('../../assets/mushaf/a307.png');
+        case 308: return require('../../assets/mushaf/a308.png');
+        case 309: return require('../../assets/mushaf/a309.png');
+        case 310: return require('../../assets/mushaf/a310.png');
+        case 311: return require('../../assets/mushaf/a311.png');
+        case 312: return require('../../assets/mushaf/a312.png');
+        case 313: return require('../../assets/mushaf/a313.png');
+        case 314: return require('../../assets/mushaf/a314.png');
+        case 315: return require('../../assets/mushaf/a315.png');
+        case 316: return require('../../assets/mushaf/a316.png');
+        case 317: return require('../../assets/mushaf/a317.png');
+        case 318: return require('../../assets/mushaf/a318.png');
+        case 319: return require('../../assets/mushaf/a319.png');
+        case 320: return require('../../assets/mushaf/a320.png');
+        case 321: return require('../../assets/mushaf/a321.png');
+        case 322: return require('../../assets/mushaf/a322.png');
+        case 323: return require('../../assets/mushaf/a323.png');
+        case 324: return require('../../assets/mushaf/a324.png');
+        case 325: return require('../../assets/mushaf/a325.png');
+        case 326: return require('../../assets/mushaf/a326.png');
+        case 327: return require('../../assets/mushaf/a327.png');
+        case 328: return require('../../assets/mushaf/a328.png');
+        case 329: return require('../../assets/mushaf/a329.png');
+        case 330: return require('../../assets/mushaf/a330.png');
+        case 331: return require('../../assets/mushaf/a331.png');
+        case 332: return require('../../assets/mushaf/a332.png');
+        case 333: return require('../../assets/mushaf/a333.png');
+        case 334: return require('../../assets/mushaf/a334.png');
+        case 335: return require('../../assets/mushaf/a335.png');
+        case 336: return require('../../assets/mushaf/a336.png');
+        case 337: return require('../../assets/mushaf/a337.png');
+        case 338: return require('../../assets/mushaf/a338.png');
+        case 339: return require('../../assets/mushaf/a339.png');
+        case 340: return require('../../assets/mushaf/a340.png');
+        case 341: return require('../../assets/mushaf/a341.png');
+        case 342: return require('../../assets/mushaf/a342.png');
+        case 343: return require('../../assets/mushaf/a343.png');
+        case 344: return require('../../assets/mushaf/a344.png');
+        case 345: return require('../../assets/mushaf/a345.png');
+        case 346: return require('../../assets/mushaf/a346.png');
+        case 347: return require('../../assets/mushaf/a347.png');
+        case 348: return require('../../assets/mushaf/a348.png');
+        case 349: return require('../../assets/mushaf/a349.png');
+        case 350: return require('../../assets/mushaf/a350.png');
+        case 351: return require('../../assets/mushaf/a351.png');
+        case 352: return require('../../assets/mushaf/a352.png');
+        case 353: return require('../../assets/mushaf/a353.png');
+        case 354: return require('../../assets/mushaf/a354.png');
+        case 355: return require('../../assets/mushaf/a355.png');
+        case 356: return require('../../assets/mushaf/a356.png');
+        case 357: return require('../../assets/mushaf/a357.png');
+        case 358: return require('../../assets/mushaf/a358.png');
+        case 359: return require('../../assets/mushaf/a359.png');
+        case 360: return require('../../assets/mushaf/a360.png');
+        case 361: return require('../../assets/mushaf/a361.png');
+        case 362: return require('../../assets/mushaf/a362.png');
+        case 363: return require('../../assets/mushaf/a363.png');
+        case 364: return require('../../assets/mushaf/a364.png');
+        case 365: return require('../../assets/mushaf/a365.png');
+        case 366: return require('../../assets/mushaf/a366.png');
+        case 367: return require('../../assets/mushaf/a367.png');
+        case 368: return require('../../assets/mushaf/a368.png');
+        case 369: return require('../../assets/mushaf/a369.png');
+        case 370: return require('../../assets/mushaf/a370.png');
+        case 371: return require('../../assets/mushaf/a371.png');
+        case 372: return require('../../assets/mushaf/a372.png');
+        case 373: return require('../../assets/mushaf/a373.png');
+        case 374: return require('../../assets/mushaf/a374.png');
+        case 375: return require('../../assets/mushaf/a375.png');
+        case 376: return require('../../assets/mushaf/a376.png');
+        case 377: return require('../../assets/mushaf/a377.png');
+        case 378: return require('../../assets/mushaf/a378.png');
+        case 379: return require('../../assets/mushaf/a379.png');
+        case 380: return require('../../assets/mushaf/a380.png');
+        case 381: return require('../../assets/mushaf/a381.png');
+        case 382: return require('../../assets/mushaf/a382.png');
+        case 383: return require('../../assets/mushaf/a383.png');
+        case 384: return require('../../assets/mushaf/a384.png');
+        case 385: return require('../../assets/mushaf/a385.png');
+        case 386: return require('../../assets/mushaf/a386.png');
+        case 387: return require('../../assets/mushaf/a387.png');
+        case 388: return require('../../assets/mushaf/a388.png');
+        case 389: return require('../../assets/mushaf/a389.png');
+        case 390: return require('../../assets/mushaf/a390.png');
+        case 391: return require('../../assets/mushaf/a391.png');
+        case 392: return require('../../assets/mushaf/a392.png');
+        case 393: return require('../../assets/mushaf/a393.png');
+        case 394: return require('../../assets/mushaf/a394.png');
+        case 395: return require('../../assets/mushaf/a395.png');
+        case 396: return require('../../assets/mushaf/a396.png');
+        case 397: return require('../../assets/mushaf/a397.png');
+        case 398: return require('../../assets/mushaf/a398.png');
+        case 399: return require('../../assets/mushaf/a399.png');
+        case 400: return require('../../assets/mushaf/a400.png');
+        case 401: return require('../../assets/mushaf/a401.png');
+        case 402: return require('../../assets/mushaf/a402.png');
+        case 403: return require('../../assets/mushaf/a403.png');
+        case 404: return require('../../assets/mushaf/a404.png');
+        case 405: return require('../../assets/mushaf/a405.png');
+        case 406: return require('../../assets/mushaf/a406.png');
+        case 407: return require('../../assets/mushaf/a407.png');
+        case 408: return require('../../assets/mushaf/a408.png');
+        case 409: return require('../../assets/mushaf/a409.png');
+        case 410: return require('../../assets/mushaf/a410.png');
+        case 411: return require('../../assets/mushaf/a411.png');
+        case 412: return require('../../assets/mushaf/a412.png');
+        case 413: return require('../../assets/mushaf/a413.png');
+        case 414: return require('../../assets/mushaf/a414.png');
+        case 415: return require('../../assets/mushaf/a415.png');
+        case 416: return require('../../assets/mushaf/a416.png');
+        case 417: return require('../../assets/mushaf/a417.png');
+        case 418: return require('../../assets/mushaf/a418.png');
+        case 419: return require('../../assets/mushaf/a419.png');
+        case 420: return require('../../assets/mushaf/a420.png');
+        case 421: return require('../../assets/mushaf/a421.png');
+        case 422: return require('../../assets/mushaf/a422.png');
+        case 423: return require('../../assets/mushaf/a423.png');
+        case 424: return require('../../assets/mushaf/a424.png');
+        case 425: return require('../../assets/mushaf/a425.png');
+        case 426: return require('../../assets/mushaf/a426.png');
+        case 427: return require('../../assets/mushaf/a427.png');
+        case 428: return require('../../assets/mushaf/a428.png');
+        case 429: return require('../../assets/mushaf/a429.png');
+        case 430: return require('../../assets/mushaf/a430.png');
+        case 431: return require('../../assets/mushaf/a431.png');
+        case 432: return require('../../assets/mushaf/a432.png');
+        case 433: return require('../../assets/mushaf/a433.png');
+        case 434: return require('../../assets/mushaf/a434.png');
+        case 435: return require('../../assets/mushaf/a435.png');
+        case 436: return require('../../assets/mushaf/a436.png');
+        case 437: return require('../../assets/mushaf/a437.png');
+        case 438: return require('../../assets/mushaf/a438.png');
+        case 439: return require('../../assets/mushaf/a439.png');
+        case 440: return require('../../assets/mushaf/a440.png');
+        case 441: return require('../../assets/mushaf/a441.png');
+        case 442: return require('../../assets/mushaf/a442.png');
+        case 443: return require('../../assets/mushaf/a443.png');
+        case 444: return require('../../assets/mushaf/a444.png');
+        case 445: return require('../../assets/mushaf/a445.png');
+        case 446: return require('../../assets/mushaf/a446.png');
+        case 447: return require('../../assets/mushaf/a447.png');
+        case 448: return require('../../assets/mushaf/a448.png');
+        case 449: return require('../../assets/mushaf/a449.png');
+        case 450: return require('../../assets/mushaf/a450.png');
+        case 451: return require('../../assets/mushaf/a451.png');
+        case 452: return require('../../assets/mushaf/a452.png');
+        case 453: return require('../../assets/mushaf/a453.png');
+        case 454: return require('../../assets/mushaf/a454.png');
+        case 455: return require('../../assets/mushaf/a455.png');
+        case 456: return require('../../assets/mushaf/a456.png');
+        case 457: return require('../../assets/mushaf/a457.png');
+        case 458: return require('../../assets/mushaf/a458.png');
+        case 459: return require('../../assets/mushaf/a459.png');
+        case 460: return require('../../assets/mushaf/a460.png');
+        case 461: return require('../../assets/mushaf/a461.png');
+        case 462: return require('../../assets/mushaf/a462.png');
+        case 463: return require('../../assets/mushaf/a463.png');
+        case 464: return require('../../assets/mushaf/a464.png');
+        case 465: return require('../../assets/mushaf/a465.png');
+        case 466: return require('../../assets/mushaf/a466.png');
+        case 467: return require('../../assets/mushaf/a467.png');
+        case 468: return require('../../assets/mushaf/a468.png');
+        case 469: return require('../../assets/mushaf/a469.png');
+        case 470: return require('../../assets/mushaf/a470.png');
+        case 471: return require('../../assets/mushaf/a471.png');
+        case 472: return require('../../assets/mushaf/a472.png');
+        case 473: return require('../../assets/mushaf/a473.png');
+        case 474: return require('../../assets/mushaf/a474.png');
+        case 475: return require('../../assets/mushaf/a475.png');
+        case 476: return require('../../assets/mushaf/a476.png');
+        case 477: return require('../../assets/mushaf/a477.png');
+        case 478: return require('../../assets/mushaf/a478.png');
+        case 479: return require('../../assets/mushaf/a479.png');
+        case 480: return require('../../assets/mushaf/a480.png');
+        case 481: return require('../../assets/mushaf/a481.png');
+        case 482: return require('../../assets/mushaf/a482.png');
+        case 483: return require('../../assets/mushaf/a483.png');
+        case 484: return require('../../assets/mushaf/a484.png');
+        case 485: return require('../../assets/mushaf/a485.png');
+        case 486: return require('../../assets/mushaf/a486.png');
+        case 487: return require('../../assets/mushaf/a487.png');
+        case 488: return require('../../assets/mushaf/a488.png');
+        case 489: return require('../../assets/mushaf/a489.png');
+        case 490: return require('../../assets/mushaf/a490.png');
+        case 491: return require('../../assets/mushaf/a491.png');
+        case 492: return require('../../assets/mushaf/a492.png');
+        case 493: return require('../../assets/mushaf/a493.png');
+        case 494: return require('../../assets/mushaf/a494.png');
+        case 495: return require('../../assets/mushaf/a495.png');
+        case 496: return require('../../assets/mushaf/a496.png');
+        case 497: return require('../../assets/mushaf/a497.png');
+        case 498: return require('../../assets/mushaf/a498.png');
+        case 499: return require('../../assets/mushaf/a499.png');
+        case 500: return require('../../assets/mushaf/a500.png');
+        case 501: return require('../../assets/mushaf/a501.png');
+        case 502: return require('../../assets/mushaf/a502.png');
+        case 503: return require('../../assets/mushaf/a503.png');
+        case 504: return require('../../assets/mushaf/a504.png');
+        case 505: return require('../../assets/mushaf/a505.png');
+        case 506: return require('../../assets/mushaf/a506.png');
+        case 507: return require('../../assets/mushaf/a507.png');
+        case 508: return require('../../assets/mushaf/a508.png');
+        case 509: return require('../../assets/mushaf/a509.png');
+        case 510: return require('../../assets/mushaf/a510.png');
+        case 511: return require('../../assets/mushaf/a511.png');
+        case 512: return require('../../assets/mushaf/a512.png');
+        case 513: return require('../../assets/mushaf/a513.png');
+        case 514: return require('../../assets/mushaf/a514.png');
+        case 515: return require('../../assets/mushaf/a515.png');
+        case 516: return require('../../assets/mushaf/a516.png');
+        case 517: return require('../../assets/mushaf/a517.png');
+        case 518: return require('../../assets/mushaf/a518.png');
+        case 519: return require('../../assets/mushaf/a519.png');
+        case 520: return require('../../assets/mushaf/a520.png');
+        case 521: return require('../../assets/mushaf/a521.png');
+        case 522: return require('../../assets/mushaf/a522.png');
+        case 523: return require('../../assets/mushaf/a523.png');
+        case 524: return require('../../assets/mushaf/a524.png');
+        case 525: return require('../../assets/mushaf/a525.png');
+        case 526: return require('../../assets/mushaf/a526.png');
+        case 527: return require('../../assets/mushaf/a527.png');
+        case 528: return require('../../assets/mushaf/a528.png');
+        case 529: return require('../../assets/mushaf/a529.png');
+        case 530: return require('../../assets/mushaf/a530.png');
+        case 531: return require('../../assets/mushaf/a531.png');
+        case 532: return require('../../assets/mushaf/a532.png');
+        case 533: return require('../../assets/mushaf/a533.png');
+        case 534: return require('../../assets/mushaf/a534.png');
+        case 535: return require('../../assets/mushaf/a535.png');
+        case 536: return require('../../assets/mushaf/a536.png');
+        case 537: return require('../../assets/mushaf/a537.png');
+        case 538: return require('../../assets/mushaf/a538.png');
+        case 539: return require('../../assets/mushaf/a539.png');
+        case 540: return require('../../assets/mushaf/a540.png');
+        case 541: return require('../../assets/mushaf/a541.png');
+        case 542: return require('../../assets/mushaf/a542.png');
+        case 543: return require('../../assets/mushaf/a543.png');
+        case 544: return require('../../assets/mushaf/a544.png');
+        case 545: return require('../../assets/mushaf/a545.png');
+        case 546: return require('../../assets/mushaf/a546.png');
+        case 547: return require('../../assets/mushaf/a547.png');
+        case 548: return require('../../assets/mushaf/a548.png');
+        case 549: return require('../../assets/mushaf/a549.png');
+        case 550: return require('../../assets/mushaf/a550.png');
+        case 551: return require('../../assets/mushaf/a551.png');
+        case 552: return require('../../assets/mushaf/a552.png');
+        case 553: return require('../../assets/mushaf/a553.png');
+        case 554: return require('../../assets/mushaf/a554.png');
+        case 555: return require('../../assets/mushaf/a555.png');
+        case 556: return require('../../assets/mushaf/a556.png');
+        case 557: return require('../../assets/mushaf/a557.png');
+        case 558: return require('../../assets/mushaf/a558.png');
+        case 559: return require('../../assets/mushaf/a559.png');
+        case 560: return require('../../assets/mushaf/a560.png');
+        case 561: return require('../../assets/mushaf/a561.png');
+        case 562: return require('../../assets/mushaf/a562.png');
+        case 563: return require('../../assets/mushaf/a563.png');
+        case 564: return require('../../assets/mushaf/a564.png');
+        case 565: return require('../../assets/mushaf/a565.png');
+        case 566: return require('../../assets/mushaf/a566.png');
+        case 567: return require('../../assets/mushaf/a567.png');
+        case 568: return require('../../assets/mushaf/a568.png');
+        case 569: return require('../../assets/mushaf/a569.png');
+        case 570: return require('../../assets/mushaf/a570.png');
+        case 571: return require('../../assets/mushaf/a571.png');
+        case 572: return require('../../assets/mushaf/a572.png');
+        case 573: return require('../../assets/mushaf/a573.png');
+        case 574: return require('../../assets/mushaf/a574.png');
+        case 575: return require('../../assets/mushaf/a575.png');
+        case 576: return require('../../assets/mushaf/a576.png');
+        case 577: return require('../../assets/mushaf/a577.png');
+        case 578: return require('../../assets/mushaf/a578.png');
+        case 579: return require('../../assets/mushaf/a579.png');
+        case 580: return require('../../assets/mushaf/a580.png');
+        case 581: return require('../../assets/mushaf/a581.png');
+        case 582: return require('../../assets/mushaf/a582.png');
+        case 583: return require('../../assets/mushaf/a583.png');
+        case 584: return require('../../assets/mushaf/a584.png');
+        case 585: return require('../../assets/mushaf/a585.png');
+        case 586: return require('../../assets/mushaf/a586.png');
+        case 587: return require('../../assets/mushaf/a587.png');
+        case 588: return require('../../assets/mushaf/a588.png');
+        case 589: return require('../../assets/mushaf/a589.png');
+        case 590: return require('../../assets/mushaf/a590.png');
+        case 591: return require('../../assets/mushaf/a591.png');
+        case 592: return require('../../assets/mushaf/a592.png');
+        case 593: return require('../../assets/mushaf/a593.png');
+        case 594: return require('../../assets/mushaf/a594.png');
+        case 595: return require('../../assets/mushaf/a595.png');
+        case 596: return require('../../assets/mushaf/a596.png');
+        case 597: return require('../../assets/mushaf/a597.png');
+        case 598: return require('../../assets/mushaf/a598.png');
+        case 599: return require('../../assets/mushaf/a599.png');
+        case 600: return require('../../assets/mushaf/a600.png');
+        case 601: return require('../../assets/mushaf/a601.png');
+        case 602: return require('../../assets/mushaf/a602.png');
+        case 603: return require('../../assets/mushaf/a603.png');
+        case 604: return require('../../assets/mushaf/a604.png');
+        default:
+            return null;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function MushafPage({
+pageNumber,
+    highlightedVerseKey,
+    longPressedVerseKey,
+    onVersePress,
+    onVerseLongPress,
+    immersive = false,
+    onImmersiveChange,
+    isActive = false,
+    nightMode = false,
+    heatmapData,
+}: MushafPageProps) {
+    const db = useAyatDB();
+
+    // ── Coordinate data: only load when page is active or adjacent ───────────
+    // Avoids hammering SQLite for all 604 pages on initial load.
+    const [pageCoords, setPageCoords] = React.useState<AyahBoundingBox[]>([]);
+    const [coordsLoaded, setCoordsLoaded] = React.useState(false);
+
+    React.useEffect(() => {
+        // Load immediately if active, defer 300ms if adjacent (pre-warm)
+        if (!db || coordsLoaded) return;
+        const delay = isActive ? 0 : 300;
+        const timer = setTimeout(() => {
+            try {
+                const coords = queryPageCoords(db, pageNumber);
+                setPageCoords(coords);
+                setCoordsLoaded(true);
+            } catch (err) {
+                console.error('[MushafPage] coords error:', err);
+            }
+        }, delay);
+        return () => clearTimeout(timer);
+    }, [db, pageNumber, isActive, coordsLoaded]);
+
+    // ── Image fade-in: prevents white flash when page first appears ──────────
+    const imageOpacity = useSharedValue(0);
+    const imageStyle = useAnimatedStyle(() => ({ opacity: imageOpacity.value }));
+
+    function handleImageLoad() {
+        imageOpacity.value = withTiming(1, { duration: 180 });
+    }
+
+
+    // ── Rendered image dimensions (set once onLayout fires) ──────────────────
+    // These are the actual pixel size of the <Image> on screen.
+    const [imgWidth, setImgWidth] = React.useState(0);
+    const [imgHeight, setImgHeight] = React.useState(0);
+
+    // ── Zoom (pinch) ─────────────────────────────────────────────────────────
+    const scale = useSharedValue(1);
+    const savedScale = useSharedValue(1);
+
+    // ── Long-press flash ──────────────────────────────────────────────────────
+    const flashAlpha = useSharedValue(0);
+
+    // ── JS callbacks (called via runOnJS from gesture worklets) ───────────────
+
+    const handleTap = React.useCallback(() => {
+        lightImpact();
+        onImmersiveChange?.(!immersive);
+    }, [immersive, onImmersiveChange]);
+
+    /**
+     * handleLongPress
+     *
+     * Converts a raw screen tap (pixels relative to the image container) into
+     * per-mille coordinates, then queries Realm to find which ayah was touched.
+     *
+     * Java equivalent: x4/n.java h() + q4/z.java onTouch ACTION_MOVE:
+     *   double dbX = (touchX_px / imageWidth_px)  * 1000
+     *   double dbY = (touchY_px / imageHeight_px) * 1000
+     *   if (dbY < row.max_y && dbY > row.min_y && dbX > row.min_x && dbX < row.max_x)
+     */
+    const handleLongPress = React.useCallback(
+        (screenX: number, screenY: number) => {
+            mediumImpact();
+            if (!db || imgWidth === 0 || imgHeight === 0) return;
+
+            // Convert screen pixels → per-mille (0–1000) coordinate space
+            // Flip X-axis because the DB uses a Right-to-Left (RTL) coordinate system
+            const touchX_pm = 1000 - ((screenX / imgWidth) * 1000);
+            const touchY_pm = (screenY / imgHeight) * 1000;
+
+            // Clamp to valid range
+            if (touchX_pm < 0 || touchX_pm > 1000 || touchY_pm < 0 || touchY_pm > 1000) return;
+
+            const hit = hitTestPage(db, pageNumber, touchX_pm, touchY_pm);
+            if (hit) {
+                onVerseLongPress?.(`${hit.sura}:${hit.aya}`);
+            }
+        },
+        [db, imgWidth, imgHeight, pageNumber, onVerseLongPress]
+    );
+
+    const handleTapVerse = React.useCallback(
+        (screenX: number, screenY: number) => {
+            if (!db || imgWidth === 0 || imgHeight === 0) {
+                handleTap();
+                return;
+            }
+            // Flip X-axis because the DB uses a Right-to-Left (RTL) coordinate system
+            const touchX_pm = 1000 - ((screenX / imgWidth) * 1000);
+            const touchY_pm = (screenY / imgHeight) * 1000;
+            if (touchX_pm < 0 || touchX_pm > 1000 || touchY_pm < 0 || touchY_pm > 1000) {
+                handleTap();
+                return;
+            }
+            const hit = hitTestPage(db, pageNumber, touchX_pm, touchY_pm);
+            if (hit) {
+                lightImpact();
+                onVersePress?.(`${hit.sura}:${hit.aya}`);
+            } else {
+                handleTap();
+            }
+        },
+        [db, imgWidth, imgHeight, pageNumber, onVersePress, handleTap]
+    );
+
+    // ── Gestures ─────────────────────────────────────────────────────────────
+    const pinchGesture = Gesture.Pinch()
+        .onUpdate((e) => {
+            scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 3));
+        })
+        .onEnd(() => { savedScale.value = scale.value; });
+
+    const longPressGesture = Gesture.LongPress()
+        .minDuration(400)
+        .onStart((e) => {
+            flashAlpha.value = withTiming(1, { duration: 80 }, () => {
+                flashAlpha.value = withTiming(0, { duration: 300 });
+            });
+            runOnJS(handleLongPress)(e.x, e.y);
+        });
+
+    const tapGesture = Gesture.Tap()
+        .maxDuration(200)
+        .numberOfTaps(1)
+        .onEnd((e, success) => {
+            if (success) runOnJS(handleTapVerse)(e.x, e.y);
+        });
+
+    const composedGesture = Gesture.Simultaneous(
+        pinchGesture,
+        Gesture.Exclusive(longPressGesture, tapGesture)
+    );
+
+    // ── Animated styles ───────────────────────────────────────────────────────
+    const zoomStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const flashStyle = useAnimatedStyle(() => ({
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: `rgba(52,211,153,${flashAlpha.value * 0.18})`,
+        pointerEvents: 'none' as const,
+    }));
+
+    // ── Night mode tint ───────────────────────────────────────────────────────
+    const nightTint = nightMode
+        ? { backgroundColor: 'rgba(0,0,0,0.55)', ...StyleSheet.absoluteFillObject }
+        : null;
+
+    // ── Highlights → delegated to MushafHighlights component ─────────────────
+
+    // ── Image source ──────────────────────────────────────────────────────────
+    const imageSource = getPageSource(pageNumber);
+
+    if (!imageSource) {
+        // Page not in static require map — show placeholder
+        return (
+            <View style={[styles.root, { backgroundColor: MUSHAF_BG }]}>
+                <ActivityIndicator size="large" color="#b5a06c" />
+                <Text style={styles.loadingText}>Page {pageNumber}</Text>
+            </View>
+        );
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    return (
+        <GestureDetector gesture={composedGesture}>
+            {/* Layer 1: Background — Mushaf paper color */}
+            <Animated.View style={[styles.root, zoomStyle]}>
+
+                {/* Shared image + highlight container.
+                    Both the Image and the highlight Animated.Views must share
+                    the same parent so absolute positioning is relative to the
+                    same origin. Using StyleSheet.absoluteFillObject here means
+                    this View takes the full root size and provides the coordinate
+                    anchor for all child absolute boxes. */}
+                <View style={StyleSheet.absoluteFillObject}>
+                    {/* Layer 2: The Mushaf page image — fades in after load */}
+                    <Animated.Image
+                        source={imageSource}
+                        style={[styles.image, imageStyle]}
+                        resizeMode="stretch"
+                        fadeDuration={0}
+                        onLoad={handleImageLoad}
+                        onLayout={(e) => {
+                            const { width, height } = e.nativeEvent.layout;
+                            setImgWidth(width);
+                            setImgHeight(height);
+                        }}
+                    />
+
+                    {/* Layer 3: Highlight overlays — anchored to the same View as the image */}
+                    <MushafHighlights
+                        pageCoords={pageCoords}
+                        imgWidth={imgWidth}
+                        imgHeight={imgHeight}
+                        highlightedVerseKey={highlightedVerseKey}
+                        longPressedVerseKey={longPressedVerseKey}
+                        heatmapData={heatmapData}
+                    />
+                </View>
+
+                {/* Night mode tint layer */}
+                {nightMode && <View style={nightTint!} pointerEvents="none" />}
+
+                {/* Long-press feedback flash */}
+                <Animated.View style={flashStyle} />
+
+            </Animated.View>
+        </GestureDetector>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+    /** Layer 1: The Mushaf paper background (#fdf6e3). */
+    root: {
+        flex: 1,
+        backgroundColor: MUSHAF_BG,
+    },
+
+    /** Layer 2: Image fills the entire root exactly (stretch). */
+    image: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
+    },
+
+    loadingText: {
+        marginTop: 12,
+        color: '#9b8866',
+        fontSize: 14,
+    },
+});

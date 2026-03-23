@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "preserve",
+        "lib": [
+            "esnext"
+        ],
+        "jsx": "react-native",
+        "strict": false,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true,
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true,
+        "forceConsistentCasingInFileNames": true
+    },
+    "extends": "expo/tsconfig.base",
+    "exclude": [
+        "node_modules",
+        "supabase/functions"
+    ]
+}

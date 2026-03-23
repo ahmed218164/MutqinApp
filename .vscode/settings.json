@@ -1,0 +1,24 @@
+{
+    // ── Deno (Supabase Edge Functions) ──────────────────────────────
+    "deno.enable": true,
+    "deno.enablePaths": [
+        "./supabase/functions"
+    ],
+    "deno.disablePaths": [
+        "./app",
+        "./components",
+        "./lib",
+        "./constants"
+    ],
+    "deno.lint": true,
+    "deno.unstable": false,
+    "deno.importMap": "./supabase/functions/deno.json",
+    "deno.config": "./supabase/functions/deno.json",
+    // ── TypeScript: use Deno formatter for .ts inside functions ──────
+    "[typescript]": {
+        "editor.defaultFormatter": "denoland.vscode-deno"
+    },
+    // Disable Node TS server inside the Deno folder
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true
+}

@@ -1,0 +1,43 @@
+# ─── node_modules — EAS server installs these fresh via npm ci ───────────────
+node_modules/
+
+# ─── Local build artifacts ────────────────────────────────────────────────────
+android/
+ios/
+dist/
+build/
+
+# ─── Expo cache / Metro cache ────────────────────────────────────────────────
+.expo/
+.npm/
+.cache/
+.metro-health-check*
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ─── Reference source code folder (17 000+ files, ~250 MB) ──────────────────
+# CRITICAL: folder name has a space — must be quoted exactly as-is.
+to_take_in_review/
+to_take_in_review_2/
+
+# ─── Git history (not needed on the build server) ────────────────────────────
+.git/
+
+# ─── Editor / OS noise ───────────────────────────────────────────────────────
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ─── Supabase edge-function sources (not needed for native build) ─────────────
+
+# ─── Test / verification scripts ─────────────────────────────────────────────
+check-models.js
+test-models.js
+verify-production-readiness.js
+switch_cases.txt
+
+# ─── Documentation / plans ───────────────────────────────────────────────────
+*.md
+implementation_plans/

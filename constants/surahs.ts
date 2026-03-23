@@ -1,0 +1,141 @@
+// Complete list of all 114 Surahs in the Quran
+export interface Surah {
+    number: number;
+    name: string;
+    transliteration: string;
+    translation: string;
+    verses: number;
+    type: 'Makki' | 'Madani';
+    page: number;
+}
+
+export const SURAHS: Surah[] = [
+    { number: 1, name: 'الفاتحة', transliteration: 'Al-Fatihah', translation: 'The Opening', verses: 7, type: 'Makki', page: 1 },
+    { number: 2, name: 'البقرة', transliteration: 'Al-Baqarah', translation: 'The Cow', verses: 286, type: 'Madani', page: 2 },
+    { number: 3, name: 'آل عمران', transliteration: 'Ali \'Imran', translation: 'Family of Imran', verses: 200, type: 'Madani', page: 50 },
+    { number: 4, name: 'النساء', transliteration: 'An-Nisa', translation: 'The Women', verses: 176, type: 'Madani', page: 77 },
+    { number: 5, name: 'المائدة', transliteration: 'Al-Ma\'idah', translation: 'The Table Spread', verses: 120, type: 'Madani', page: 106 },
+    { number: 6, name: 'الأنعام', transliteration: 'Al-An\'am', translation: 'The Cattle', verses: 165, type: 'Makki', page: 128 },
+    { number: 7, name: 'الأعراف', transliteration: 'Al-A\'raf', translation: 'The Heights', verses: 206, type: 'Makki', page: 151 },
+    { number: 8, name: 'الأنفال', transliteration: 'Al-Anfal', translation: 'The Spoils of War', verses: 75, type: 'Madani', page: 177 },
+    { number: 9, name: 'التوبة', transliteration: 'At-Tawbah', translation: 'The Repentance', verses: 129, type: 'Madani', page: 187 },
+    { number: 10, name: 'يونس', transliteration: 'Yunus', translation: 'Jonah', verses: 109, type: 'Makki', page: 208 },
+    { number: 11, name: 'هود', transliteration: 'Hud', translation: 'Hud', verses: 123, type: 'Makki', page: 221 },
+    { number: 12, name: 'يوسف', transliteration: 'Yusuf', translation: 'Joseph', verses: 111, type: 'Makki', page: 235 },
+    { number: 13, name: 'الرعد', transliteration: 'Ar-Ra\'d', translation: 'The Thunder', verses: 43, type: 'Madani', page: 249 },
+    { number: 14, name: 'إبراهيم', transliteration: 'Ibrahim', translation: 'Abraham', verses: 52, type: 'Makki', page: 255 },
+    { number: 15, name: 'الحجر', transliteration: 'Al-Hijr', translation: 'The Rocky Tract', verses: 99, type: 'Makki', page: 262 },
+    { number: 16, name: 'النحل', transliteration: 'An-Nahl', translation: 'The Bee', verses: 128, type: 'Makki', page: 267 },
+    { number: 17, name: 'الإسراء', transliteration: 'Al-Isra', translation: 'The Night Journey', verses: 111, type: 'Makki', page: 282 },
+    { number: 18, name: 'الكهف', transliteration: 'Al-Kahf', translation: 'The Cave', verses: 110, type: 'Makki', page: 293 },
+    { number: 19, name: 'مريم', transliteration: 'Maryam', translation: 'Mary', verses: 98, type: 'Makki', page: 305 },
+    { number: 20, name: 'طه', transliteration: 'Taha', translation: 'Ta-Ha', verses: 135, type: 'Makki', page: 312 },
+    { number: 21, name: 'الأنبياء', transliteration: 'Al-Anbya', translation: 'The Prophets', verses: 112, type: 'Makki', page: 322 },
+    { number: 22, name: 'الحج', transliteration: 'Al-Hajj', translation: 'The Pilgrimage', verses: 78, type: 'Madani', page: 332 },
+    { number: 23, name: 'المؤمنون', transliteration: 'Al-Mu\'minun', translation: 'The Believers', verses: 118, type: 'Makki', page: 342 },
+    { number: 24, name: 'النور', transliteration: 'An-Nur', translation: 'The Light', verses: 64, type: 'Madani', page: 350 },
+    { number: 25, name: 'الفرقان', transliteration: 'Al-Furqan', translation: 'The Criterion', verses: 77, type: 'Makki', page: 359 },
+    { number: 26, name: 'الشعراء', transliteration: 'Ash-Shu\'ara', translation: 'The Poets', verses: 227, type: 'Makki', page: 367 },
+    { number: 27, name: 'النمل', transliteration: 'An-Naml', translation: 'The Ant', verses: 93, type: 'Makki', page: 377 },
+    { number: 28, name: 'القصص', transliteration: 'Al-Qasas', translation: 'The Stories', verses: 88, type: 'Makki', page: 385 },
+    { number: 29, name: 'العنكبوت', transliteration: 'Al-\'Ankabut', translation: 'The Spider', verses: 69, type: 'Makki', page: 396 },
+    { number: 30, name: 'الروم', transliteration: 'Ar-Rum', translation: 'The Romans', verses: 60, type: 'Makki', page: 404 },
+    { number: 31, name: 'لقمان', transliteration: 'Luqman', translation: 'Luqman', verses: 34, type: 'Makki', page: 411 },
+    { number: 32, name: 'السجدة', transliteration: 'As-Sajdah', translation: 'The Prostration', verses: 30, type: 'Makki', page: 415 },
+    { number: 33, name: 'الأحزاب', transliteration: 'Al-Ahzab', translation: 'The Combined Forces', verses: 73, type: 'Madani', page: 418 },
+    { number: 34, name: 'سبأ', transliteration: 'Saba', translation: 'Sheba', verses: 54, type: 'Makki', page: 428 },
+    { number: 35, name: 'فاطر', transliteration: 'Fatir', translation: 'Originator', verses: 45, type: 'Makki', page: 434 },
+    { number: 36, name: 'يس', transliteration: 'Ya-Sin', translation: 'Ya Sin', verses: 83, type: 'Makki', page: 440 },
+    { number: 37, name: 'الصافات', transliteration: 'As-Saffat', translation: 'Those who set the Ranks', verses: 182, type: 'Makki', page: 446 },
+    { number: 38, name: 'ص', transliteration: 'Sad', translation: 'The Letter "Saad"', verses: 88, type: 'Makki', page: 453 },
+    { number: 39, name: 'الزمر', transliteration: 'Az-Zumar', translation: 'The Troops', verses: 75, type: 'Makki', page: 458 },
+    { number: 40, name: 'غافر', transliteration: 'Ghafir', translation: 'The Forgiver', verses: 85, type: 'Makki', page: 467 },
+    { number: 41, name: 'فصلت', transliteration: 'Fussilat', translation: 'Explained in Detail', verses: 54, type: 'Makki', page: 477 },
+    { number: 42, name: 'الشورى', transliteration: 'Ash-Shuraa', translation: 'The Consultation', verses: 53, type: 'Makki', page: 483 },
+    { number: 43, name: 'الزخرف', transliteration: 'Az-Zukhruf', translation: 'The Ornaments of Gold', verses: 89, type: 'Makki', page: 489 },
+    { number: 44, name: 'الدخان', transliteration: 'Ad-Dukhan', translation: 'The Smoke', verses: 59, type: 'Makki', page: 496 },
+    { number: 45, name: 'الجاثية', transliteration: 'Al-Jathiyah', translation: 'The Crouching', verses: 37, type: 'Makki', page: 499 },
+    { number: 46, name: 'الأحقاف', transliteration: 'Al-Ahqaf', translation: 'The Wind-Curved Sandhills', verses: 35, type: 'Makki', page: 502 },
+    { number: 47, name: 'محمد', transliteration: 'Muhammad', translation: 'Muhammad', verses: 38, type: 'Madani', page: 507 },
+    { number: 48, name: 'الفتح', transliteration: 'Al-Fath', translation: 'The Victory', verses: 29, type: 'Madani', page: 511 },
+    { number: 49, name: 'الحجرات', transliteration: 'Al-Hujurat', translation: 'The Rooms', verses: 18, type: 'Madani', page: 515 },
+    { number: 50, name: 'ق', transliteration: 'Qaf', translation: 'The Letter "Qaf"', verses: 45, type: 'Makki', page: 518 },
+    { number: 51, name: 'الذاريات', transliteration: 'Adh-Dhariyat', translation: 'The Winnowing Winds', verses: 60, type: 'Makki', page: 520 },
+    { number: 52, name: 'الطور', transliteration: 'At-Tur', translation: 'The Mount', verses: 49, type: 'Makki', page: 523 },
+    { number: 53, name: 'النجم', transliteration: 'An-Najm', translation: 'The Star', verses: 62, type: 'Makki', page: 526 },
+    { number: 54, name: 'القمر', transliteration: 'Al-Qamar', translation: 'The Moon', verses: 55, type: 'Makki', page: 528 },
+    { number: 55, name: 'الرحمن', transliteration: 'Ar-Rahman', translation: 'The Beneficent', verses: 78, type: 'Madani', page: 531 },
+    { number: 56, name: 'الواقعة', transliteration: 'Al-Waqi\'ah', translation: 'The Inevitable', verses: 96, type: 'Makki', page: 534 },
+    { number: 57, name: 'الحديد', transliteration: 'Al-Hadid', translation: 'The Iron', verses: 29, type: 'Madani', page: 537 },
+    { number: 58, name: 'المجادلة', transliteration: 'Al-Mujadila', translation: 'The Pleading Woman', verses: 22, type: 'Madani', page: 542 },
+    { number: 59, name: 'الحشر', transliteration: 'Al-Hashr', translation: 'The Exile', verses: 24, type: 'Madani', page: 545 },
+    { number: 60, name: 'الممتحنة', transliteration: 'Al-Mumtahanah', translation: 'She that is to be examined', verses: 13, type: 'Madani', page: 549 },
+    { number: 61, name: 'الصف', transliteration: 'As-Saf', translation: 'The Ranks', verses: 14, type: 'Madani', page: 551 },
+    { number: 62, name: 'الجمعة', transliteration: 'Al-Jumu\'ah', translation: 'The Congregation', verses: 11, type: 'Madani', page: 553 },
+    { number: 63, name: 'المنافقون', transliteration: 'Al-Munafiqun', translation: 'The Hypocrites', verses: 11, type: 'Madani', page: 554 },
+    { number: 64, name: 'التغابن', transliteration: 'At-Taghabun', translation: 'The Mutual Disillusion', verses: 18, type: 'Madani', page: 556 },
+    { number: 65, name: 'الطلاق', transliteration: 'At-Talaq', translation: 'The Divorce', verses: 12, type: 'Madani', page: 558 },
+    { number: 66, name: 'التحريم', transliteration: 'At-Tahrim', translation: 'The Prohibition', verses: 12, type: 'Madani', page: 560 },
+    { number: 67, name: 'الملك', transliteration: 'Al-Mulk', translation: 'The Sovereignty', verses: 30, type: 'Makki', page: 562 },
+    { number: 68, name: 'القلم', transliteration: 'Al-Qalam', translation: 'The Pen', verses: 52, type: 'Makki', page: 564 },
+    { number: 69, name: 'الحاقة', transliteration: 'Al-Haqqah', translation: 'The Reality', verses: 52, type: 'Makki', page: 566 },
+    { number: 70, name: 'المعارج', transliteration: 'Al-Ma\'arij', translation: 'The Ascending Stairways', verses: 44, type: 'Makki', page: 568 },
+    { number: 71, name: 'نوح', transliteration: 'Nuh', translation: 'Noah', verses: 28, type: 'Makki', page: 570 },
+    { number: 72, name: 'الجن', transliteration: 'Al-Jinn', translation: 'The Jinn', verses: 28, type: 'Makki', page: 572 },
+    { number: 73, name: 'المزمل', transliteration: 'Al-Muzzammil', translation: 'The Enshrouded One', verses: 20, type: 'Makki', page: 574 },
+    { number: 74, name: 'المدثر', transliteration: 'Al-Muddaththir', translation: 'The Cloaked One', verses: 56, type: 'Makki', page: 575 },
+    { number: 75, name: 'القيامة', transliteration: 'Al-Qiyamah', translation: 'The Resurrection', verses: 40, type: 'Makki', page: 577 },
+    { number: 76, name: 'الإنسان', transliteration: 'Al-Insan', translation: 'The Man', verses: 31, type: 'Madani', page: 578 },
+    { number: 77, name: 'المرسلات', transliteration: 'Al-Mursalat', translation: 'The Emissaries', verses: 50, type: 'Makki', page: 580 },
+    { number: 78, name: 'النبأ', transliteration: 'An-Naba', translation: 'The Tidings', verses: 40, type: 'Makki', page: 582 },
+    { number: 79, name: 'النازعات', transliteration: 'An-Nazi\'at', translation: 'Those who drag forth', verses: 46, type: 'Makki', page: 583 },
+    { number: 80, name: 'عبس', transliteration: '\'Abasa', translation: 'He Frowned', verses: 42, type: 'Makki', page: 585 },
+    { number: 81, name: 'التكوير', transliteration: 'At-Takwir', translation: 'The Overthrowing', verses: 29, type: 'Makki', page: 586 },
+    { number: 82, name: 'الانفطار', transliteration: 'Al-Infitar', translation: 'The Cleaving', verses: 19, type: 'Makki', page: 587 },
+    { number: 83, name: 'المطففين', transliteration: 'Al-Mutaffifin', translation: 'The Defrauding', verses: 36, type: 'Makki', page: 587 },
+    { number: 84, name: 'الانشقاق', transliteration: 'Al-Inshiqaq', translation: 'The Sundering', verses: 25, type: 'Makki', page: 589 },
+    { number: 85, name: 'البروج', transliteration: 'Al-Buruj', translation: 'The Mansions of the Stars', verses: 22, type: 'Makki', page: 590 },
+    { number: 86, name: 'الطارق', transliteration: 'At-Tariq', translation: 'The Nightcommer', verses: 17, type: 'Makki', page: 591 },
+    { number: 87, name: 'الأعلى', transliteration: 'Al-A\'la', translation: 'The Most High', verses: 19, type: 'Makki', page: 591 },
+    { number: 88, name: 'الغاشية', transliteration: 'Al-Ghashiyah', translation: 'The Overwhelming', verses: 26, type: 'Makki', page: 592 },
+    { number: 89, name: 'الفجر', transliteration: 'Al-Fajr', translation: 'The Dawn', verses: 30, type: 'Makki', page: 593 },
+    { number: 90, name: 'البلد', transliteration: 'Al-Balad', translation: 'The City', verses: 20, type: 'Makki', page: 594 },
+    { number: 91, name: 'الشمس', transliteration: 'Ash-Shams', translation: 'The Sun', verses: 15, type: 'Makki', page: 595 },
+    { number: 92, name: 'الليل', transliteration: 'Al-Layl', translation: 'The Night', verses: 21, type: 'Makki', page: 595 },
+    { number: 93, name: 'الضحى', transliteration: 'Ad-Duhaa', translation: 'The Morning Hours', verses: 11, type: 'Makki', page: 596 },
+    { number: 94, name: 'الشرح', transliteration: 'Ash-Sharh', translation: 'The Relief', verses: 8, type: 'Makki', page: 596 },
+    { number: 95, name: 'التين', transliteration: 'At-Tin', translation: 'The Fig', verses: 8, type: 'Makki', page: 597 },
+    { number: 96, name: 'العلق', transliteration: 'Al-\'Alaq', translation: 'The Clot', verses: 19, type: 'Makki', page: 597 },
+    { number: 97, name: 'القدر', transliteration: 'Al-Qadr', translation: 'The Power', verses: 5, type: 'Makki', page: 598 },
+    { number: 98, name: 'البينة', transliteration: 'Al-Bayyinah', translation: 'The Clear Proof', verses: 8, type: 'Madani', page: 598 },
+    { number: 99, name: 'الزلزلة', transliteration: 'Az-Zalzalah', translation: 'The Earthquake', verses: 8, type: 'Madani', page: 599 },
+    { number: 100, name: 'العاديات', transliteration: 'Al-\'Adiyat', translation: 'The Courser', verses: 11, type: 'Makki', page: 599 },
+    { number: 101, name: 'القارعة', transliteration: 'Al-Qari\'ah', translation: 'The Calamity', verses: 11, type: 'Makki', page: 600 },
+    { number: 102, name: 'التكاثر', transliteration: 'At-Takathur', translation: 'The Rivalry in world increase', verses: 8, type: 'Makki', page: 600 },
+    { number: 103, name: 'العصر', transliteration: 'Al-\'Asr', translation: 'The Declining Day', verses: 3, type: 'Makki', page: 601 },
+    { number: 104, name: 'الهمزة', transliteration: 'Al-Humazah', translation: 'The Traducer', verses: 9, type: 'Makki', page: 601 },
+    { number: 105, name: 'الفيل', transliteration: 'Al-Fil', translation: 'The Elephant', verses: 5, type: 'Makki', page: 601 },
+    { number: 106, name: 'قريش', transliteration: 'Quraysh', translation: 'Quraysh', verses: 4, type: 'Makki', page: 602 },
+    { number: 107, name: 'الماعون', transliteration: 'Al-Ma\'un', translation: 'The Small kindnesses', verses: 7, type: 'Makki', page: 602 },
+    { number: 108, name: 'الكوثر', transliteration: 'Al-Kawthar', translation: 'The Abundance', verses: 3, type: 'Makki', page: 602 },
+    { number: 109, name: 'الكافرون', transliteration: 'Al-Kafirun', translation: 'The Disbelievers', verses: 6, type: 'Makki', page: 603 },
+    { number: 110, name: 'النصر', transliteration: 'An-Nasr', translation: 'The Divine Support', verses: 3, type: 'Madani', page: 603 },
+    { number: 111, name: 'المسد', transliteration: 'Al-Masad', translation: 'The Palm Fiber', verses: 5, type: 'Makki', page: 603 },
+    { number: 112, name: 'الإخلاص', transliteration: 'Al-Ikhlas', translation: 'The Sincerity', verses: 4, type: 'Makki', page: 604 },
+    { number: 113, name: 'الفلق', transliteration: 'Al-Falaq', translation: 'The Daybreak', verses: 5, type: 'Makki', page: 604 },
+    { number: 114, name: 'الناس', transliteration: 'An-Nas', translation: 'Mankind', verses: 6, type: 'Makki', page: 604 },
+];
+
+export function getSurahByNumber(number: number): Surah | undefined {
+    return SURAHS.find(s => s.number === number);
+}
+
+export function searchSurahs(query: string): Surah[] {
+    const lowerQuery = query.toLowerCase();
+    return SURAHS.filter(
+        s =>
+            s.name.includes(query) ||
+            s.transliteration.toLowerCase().includes(lowerQuery) ||
+            s.translation.toLowerCase().includes(lowerQuery)
+    );
+}

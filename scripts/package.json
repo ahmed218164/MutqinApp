@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "realm": "^10.24.0"
+  }
+}
