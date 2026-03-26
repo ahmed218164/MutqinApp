@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // ⚠️ ضع مفتاحك هنا
-const API_KEY = "AIzaSyBwFrGOBHJ3dar4QYL2riQANdrGytlhRHY";
+const API_KEY = "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 async function runMedicalTest() {
