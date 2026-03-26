@@ -145,7 +145,12 @@ Return ONLY this JSON (no extra text):
                 const text = result.response.text().trim();
                 // Strip markdown code fences if any
                 const jsonStr = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
-                paceTemplate = JSON.parse(jsonStr);
+                try {
+                    paceTemplate = JSON.parse(jsonStr);
+                } catch (parseErr) {
+                    console.warn(`⚠️ Model ${modelName} returned unparseable JSON:`, jsonStr.substring(0, 200));
+                    continue; // try next model
+                }
                 usedModel = modelName;
                 console.log(`✅ Model ${modelName} succeeded:`, paceTemplate);
                 break; // success - exit loop

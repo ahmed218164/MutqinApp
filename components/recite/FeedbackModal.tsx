@@ -11,7 +11,7 @@ import {
 import { CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import Card from '../ui/Card';
-import { RecitationAssessment } from '../../lib/gemini';
+import { RecitationAssessment } from '../../lib/recitation-storage';
 
 interface FeedbackModalProps {
     visible: boolean;
@@ -25,10 +25,11 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
 
     function getModelDisplayName(modelId?: string): string {
         switch (modelId) {
+            case 'muaalem-api': return 'Muaalem Tajweed AI';
             case 'gemini-flash-latest': return 'Gemini 3 Flash';
             case 'gemini-2.5-flash': return 'Gemini 2.5 Flash';
             case 'gemini-2.5-flash-lite': return 'Gemini 2.5 Flash Lite';
-            default: return 'Gemini AI';
+            default: return modelId || 'AI';
         }
     }
 
@@ -66,13 +67,13 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
         >
             <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
-                    <Text style={styles.modalTitle}>Tajweed Assessment</Text>
+                    <Text style={styles.modalTitle}>تقييم التجويد</Text>
 
                     {/* AI Model Indicator */}
                     {feedback.modelUsed && (
                         <View style={styles.modelIndicator}>
                             <Text style={styles.modelIndicatorText}>
-                                🧠 Audited by {getModelDisplayName(feedback.modelUsed)}
+                                🧠 تم التقييم بواسطة {getModelDisplayName(feedback.modelUsed)}
                             </Text>
                         </View>
                     )}
@@ -81,7 +82,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
                     {saving && (
                         <View style={styles.savingContainer}>
                             <ActivityIndicator size="small" color={Colors.gold[600]} />
-                            <Text style={styles.savingText}>Saving progress...</Text>
+                            <Text style={styles.savingText}>جارٍ حفظ التقدم...</Text>
                         </View>
                     )}
 
@@ -164,7 +165,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
                             style={styles.closeButton}
                             onPress={onClose}
                         >
-                            <Text style={styles.closeButtonText}>Close</Text>
+                            <Text style={styles.closeButtonText}>إغلاق</Text>
                         </TouchableOpacity>
                     </ScrollView>
                 </View>

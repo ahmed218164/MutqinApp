@@ -3,8 +3,13 @@
  * اختبار Edge Function مباشرة
  */
 
-const SUPABASE_URL = 'https://uolpnjnzshgfjanuruyc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvbHBuam56c2hnZmphbnVydXljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3MzQ4MzcsImV4cCI6MjA4NjMxMDgzN30.KQ1z1NEx8dGHPA3ZUIiuoQj8QhQSr_dIKpG71pRxJ2c';
+// SECURITY: Credentials must be provided via environment variables
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error("❌ SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required.\n   Usage: SUPABASE_URL=https://... SUPABASE_ANON_KEY=ey... node test-edge-function.js");
+    process.exit(1);
+}
 
 async function testEdgeFunction() {
     console.log('🔌 Testing Edge Function: generate-plan...\n');

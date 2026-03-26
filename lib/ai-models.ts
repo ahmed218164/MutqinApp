@@ -56,6 +56,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Safe JSON parse — strips markdown fences and catches parse errors.
+ * Returns the parsed object or throws with a clear message.
+ */
+function safeParseJSON(text: string): any {
+    try {
+        const cleaned = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
+        return JSON.parse(cleaned);
+    } catch (err) {
+        console.error('[ai-models] Failed to parse AI JSON response:', text.substring(0, 200));
+        throw new Error('فشل في قراءة نتيجة الذكاء الاصطناعي.');
+    }
+}
+
+/**
  * Rate limit cache to track temporarily unavailable models
  */
 const rateLimitCache = new Map<ModelType, { until: Date; count: number }>();
@@ -176,7 +190,7 @@ export async function generateWithFallback<T>(
             const text = response.text();
 
             const data = options?.responseMimeType === 'application/json'
-                ? JSON.parse(text)
+                ? safeParseJSON(text)
                 : text;
 
             return {
@@ -245,7 +259,7 @@ async function tryFallback<T>(
         const text = response.text();
 
         const data = options?.responseMimeType === 'application/json'
-            ? JSON.parse(text)
+            ? safeParseJSON(text)
             : text;
 
         return {

@@ -168,8 +168,19 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
         const response = await result.response;
         const text = response.text();
 
-        // Parse the JSON response directly
-        const assessment: RecitationAssessment = JSON.parse(text);
+        // ✅ Protected JSON parse — AI output can be malformed
+        let assessment: RecitationAssessment;
+        try {
+            const cleaned = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
+            assessment = JSON.parse(cleaned);
+        } catch (parseError) {
+            console.error('[gemini] Failed to parse AI response as JSON:', text.substring(0, 200));
+            return {
+                mistakes: [],
+                score: 0,
+                error: 'فشل في قراءة نتيجة التحليل. يرجى المحاولة مرة أخرى.',
+            };
+        }
         assessment.modelUsed = modelUsed;
         return assessment;
     } catch (error: any) {

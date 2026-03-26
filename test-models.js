@@ -1,4 +1,9 @@
-const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "AIzaSyBwFrGOBHJ3dar4QYL2riQANdrGytlhRHY"
+// SECURITY: API key must be provided via environment variable
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+    console.error("❌ GEMINI_API_KEY environment variable is not set.\n   Usage: GEMINI_API_KEY=your_key node test-models.js");
+    process.exit(1);
+}
 const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
 
 async function listModels() {

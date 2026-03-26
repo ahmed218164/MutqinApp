@@ -49,7 +49,13 @@ export class OfflineUploadQueue {
     try {
       const queueJson = await AsyncStorage.getItem(QUEUE_KEY);
       if (queueJson) {
-        this.queue = JSON.parse(queueJson);
+        try {
+          this.queue = JSON.parse(queueJson);
+        } catch (parseErr) {
+          console.warn('[offline-queue] Corrupt queue data, resetting:', parseErr);
+          this.queue = [];
+          await AsyncStorage.removeItem(QUEUE_KEY);
+        }
         console.log(`📦 Loaded ${this.queue.length} queued uploads`);
       }
     } catch (error) {
