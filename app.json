@@ -32,7 +32,9 @@
         "RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "edgeToEdgeEnabled": true
     },
@@ -53,9 +55,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c8f40347-f14f-43d8-b7dc-d464123aed3b"
+        "projectId": "bc07e137-d693-41c9-9365-714a2861736c"
       }
     },
-    "owner": "ahmedzaki254"
+    "owner": "ahmed5568"
   }
 }
