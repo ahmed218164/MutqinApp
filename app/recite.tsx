@@ -14,17 +14,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Audio } from 'expo-av';
 import { setAudioModeAsync } from 'expo-audio';
 import { audioEngine } from '../lib/audio-engine';
-import { ArrowLeft, Mic, Square, Play, AlertCircle, Settings as SettingsIcon, Bookmark, Plus, Minus, Moon, Sun } from 'lucide-react-native';
+import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark, Plus, Minus, Moon, Sun } from 'lucide-react-native';
 import { Colors as StaticColors, Typography, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
-import Card from '../components/ui/Card';
-import { checkRecitation } from '../lib/gemini'; // Keep RecitationAssessment from gemini as it's the primary source
-import { checkRecitationViaStorage, RecitationAssessment, checkRecitationDirect } from '../lib/recitation-storage';
-import { phonetizeForQiraat } from '../lib/quran-phonetizer';
+// Muaalem API replaces Gemini — called internally by useVADRecorder
+import { useVADRecorder } from '../hooks/useVADRecorder';
+// Keep RecitationAssessment type for backward compat with FeedbackModal / saveResults
+import { RecitationAssessment } from '../lib/recitation-storage';
 import { getSurahByNumber } from '../constants/surahs';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
@@ -35,8 +34,6 @@ import { awardXP, checkAchievements, updateStreak, XP_REWARDS } from '../lib/gam
 import { sendGoalCompletionNotification } from '../lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FeedbackModal from '../components/recite/FeedbackModal';
-import { offlineQueue } from '../lib/offline-queue';
-import { checkConnectivity } from '../lib/network';
 import MushafPager from '../components/recite/MushafPager';
 import UnifiedAudioControl, { AudioMode } from '../components/recite/UnifiedAudioControl';
 import RangeSelector from '../components/recite/RangeSelector';
@@ -53,8 +50,7 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 
-// Minimum recording duration before analysis (seconds)
-const MIN_RECORDING_SECONDS = 3;
+// Minimum recording duration handled by useVADRecorder (MIN_CHUNK_DURATION_MS = 2000ms)
 
 interface Ayah {
     number: number;
@@ -93,25 +89,30 @@ function ReciteScreenInner() {
     // Range Selection States
     const [selectedRange, setSelectedRange] = React.useState({ from: 1, to: 1 });
     const [learningMode, setLearningMode] = React.useState(false);
-    const [recordingDuration, setRecordingDuration] = React.useState(0);
     const [showRangeSelector, setShowRangeSelector] = React.useState(false);
 
     // Pager State
     const [activePage, setActivePage] = React.useState<number>(1);
 
-    // Recording States
-    const [recording, setRecording] = React.useState<Audio.Recording | null>(null);
+    // ── VAD Recording (replaces manual start/stop + Gemini) ─────────────────
+    // Compute reference text for the current range
+    const rangedVersesForRef = React.useMemo(() => {
+        return verses
+            .filter(v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to)
+            .map(a => a.text)
+            .join(' * ');
+    }, [verses, selectedRange]);
+
+    const vadRecorder = useVADRecorder(rangedVersesForRef);
+
+    // UI state derived from VAD
     const [analyzing, setAnalyzing] = React.useState(false);
-    // ✔️ Upload progress step for clear user feedback
     const [uploadStep, setUploadStep] = React.useState<
         'idle' | 'uploading' | 'analyzing' | 'saving'
     >('idle');
     const [feedback, setFeedback] = React.useState<RecitationAssessment | null>(null);
     const [modalVisible, setModalVisible] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
-    const [permissionResponse, requestPermission] = Audio.usePermissions();
-    const stoppingRef = React.useRef(false);
-    const startingRef = React.useRef(false);
     // Sheikh's first-ayah URL — pre-fetched by UnifiedAudioControl, used as Makhraj reference
     const sheikhClipUrlRef = React.useRef<string | null>(null);
 
@@ -185,18 +186,7 @@ function ReciteScreenInner() {
         }
     }, []);
 
-    // Cleanup recording timer on unmount to prevent memory leak
-    React.useEffect(() => {
-        return () => {
-            if (recording) {
-                const timerInterval = (recording as any)._timerInterval;
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                }
-                recording.stopAndUnloadAsync().catch(console.warn);
-            }
-        };
-    }, [recording]);
+    // VAD recorder cleanup is handled internally by useVADRecorder's own useEffect.
 
     // Load bookmark state — Supabase (synced) with AsyncStorage fallback
     React.useEffect(() => {
@@ -218,7 +208,11 @@ function ReciteScreenInner() {
                 // Fallback: local AsyncStorage
                 const stored = await AsyncStorage.getItem('bookmarks');
                 if (stored) {
-                    setIsBookmarked(JSON.parse(stored).includes(surahNumber));
+                    try {
+                        setIsBookmarked(JSON.parse(stored).includes(surahNumber));
+                    } catch {
+                        // Corrupt data — ignore
+                    }
                 }
             }
         } catch (e) {
@@ -326,266 +320,92 @@ function ReciteScreenInner() {
         }
     }, [activeVerseIndex]); // Depend on verse index change
 
-    // Helper function to convert audio URI to Base64
-    const uriToBase64 = async (uri: string) => {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        return new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const base64data = (reader.result as string).split(',')[1];
-                resolve(base64data);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    };
+    // ── VAD-based start/stop ────────────────────────────────────────────────
+    // Replaces the old manual startRecording/stopRecording + Gemini pipeline.
+    // useVADRecorder handles:
+    //   - Metering-driven silence detection
+    //   - Auto-chunking (stop → send to Muaalem → restart)
+    //   - Aggregation of all chunk results on finish
 
     async function startRecording() {
-        if (startingRef.current || stoppingRef.current || analyzing) return;
-
-        try {
-            startingRef.current = true;
-            mediumImpact(); // Haptic feedback
-
-            // ✅ FORCED CLEANUP - Ensure any existing recording is fully released
-            if (recording) {
-                try {
-                    await recording.stopAndUnloadAsync();
-                } catch (cleanupError) {
-                    console.warn('Cleanup warning:', cleanupError);
-                }
-                setRecording(null);
-            }
-
-            const permission = await Audio.requestPermissionsAsync();
-            if (!permission.granted) {
-                Alert.alert('إذن مطلوب', 'يرجى السماح بالوصول إلى الميكروفون');
-                return;
-            }
-
-            // Phase 2: Pause AudioEngine before switching iOS session to recording mode.
-            // Without this, expo-av's allowsRecordingIOS=true kills the expo-audio playback session.
-            const engineSnap = audioEngine.getSnapshot();
-            if (engineSnap.isPlaying) {
-                audioEngine.togglePlayback();
-            }
-
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-            });
-
-            // Use HIGH_QUALITY for accurate phonetics
-            const { recording: newRecording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
-            setRecording(newRecording);
-
-            // Start recording timer
-            const startTime = Date.now();
-            const interval = setInterval(() => {
-                setRecordingDuration(Math.floor((Date.now() - startTime) / 1000));
-            }, 1000);
-            (newRecording as any)._timerInterval = interval;
-        } catch (err) {
-            console.error('Failed to start recording', err);
-            Alert.alert('خطأ', 'فشل بدء التسجيل. حاول مرة أخرى.');
-        } finally {
-            startingRef.current = false;
-        }
-    }
-
-    async function stopRecording() {
-        // Guard against double-invocation
-        if (stoppingRef.current) return;
-
-        // Capture recording reference before nulling
-        const currentRecording = recording;
-
-        if (!currentRecording) return;
+        if (vadRecorder.state.isSessionActive || analyzing) return;
         if (!user) {
             Alert.alert('خطأ', 'يجب تسجيل الدخول أولاً');
             return;
         }
 
-        stoppingRef.current = true;
-
-        // ✔️ Guard: minimum recording duration (prevents accidental tap analysis)
-        if (recordingDuration < MIN_RECORDING_SECONDS) {
-            stoppingRef.current = false;
-            // Stop the recording cleanly without analyzing
-            try {
-                await currentRecording.stopAndUnloadAsync();
-            } catch (_) {}
-            setRecording(null);
-            setRecordingDuration(0);
-            Alert.alert(
-                'التسجيل قصير جداً',
-                `يرجى الاستمرار في التسجيل لمدة ${MIN_RECORDING_SECONDS} ثوانٍ على الأقل.`
-            );
-            return;
+        // Pause AudioEngine before switching iOS session to recording mode
+        const engineSnap = audioEngine.getSnapshot();
+        if (engineSnap.isPlaying) {
+            audioEngine.togglePlayback();
         }
 
-        // Immediate UI update
-        setRecording(null);
-        setRecordingDuration(0);
+        await vadRecorder.startSession();
+    }
+
+    async function stopRecording() {
+        if (!vadRecorder.state.isSessionActive) return;
+        if (!user) return;
+
         setAnalyzing(true);
-        setUploadStep('uploading');
+        setUploadStep('analyzing');
 
         try {
             mediumImpact();
 
-            if ((currentRecording as any)._timerInterval) {
-                clearInterval((currentRecording as any)._timerInterval);
+            // finishSession stops the last chunk, waits for all API calls, aggregates
+            const aggregatedResult = await vadRecorder.finishSession();
+
+            if (!aggregatedResult) {
+                Alert.alert('خطأ', 'لم يتم الحصول على نتائج.');
+                return;
             }
 
-            console.log('🎤 Stopping recording...');
-
-            try {
-                const status = await currentRecording.getStatusAsync();
-                if (status.canRecord || status.isRecording) {
-                    await currentRecording.stopAndUnloadAsync();
-                }
-            } catch (stopError) {
-                console.warn('Recording stop warning (may already be stopped):', stopError);
+            if (aggregatedResult.error) {
+                Alert.alert('خطأ في التحليل', aggregatedResult.error);
+                return;
             }
 
-            const uri = currentRecording.getURI();
+            // Convert Muaalem result to RecitationAssessment for backward compat
+            const result: RecitationAssessment = {
+                score: aggregatedResult.score,
+                mistakes: aggregatedResult.mistakes.map(m => ({
+                    text: m.word,
+                    correction: m.expected,
+                    description: m.description,
+                    category: mapMuaalemCategory(m.category),
+                    severity: m.severity,
+                })),
+                modelUsed: 'muaalem-api',
+            };
 
-            if (!uri) {
-                throw new Error('لم يتم الحصول على ملف التسجيل');
-            }
+            setUploadStep('saving');
+            setFeedback(result);
+            setModalVisible(true);
 
-            console.log('📤 Uploading to Storage and analyzing...');
+            // Save results and handle progression
+            await saveResults(result);
 
-            // Only analyze verses in selected range
-            const rangedVerses = verses.filter(
-                v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to
-            );
-            const referenceText = rangedVerses.map(ayah => ayah.text).join(' * ');
-
-            // ✅ TIMEOUT for large files
-            const UPLOAD_TIMEOUT = 30000; // 30 seconds timeout
-
-            // ✅ Convert User Audio to Base64 directly
-            console.log('📤 Converting user audio to Base64...');
-            const userAudioBase64 = await uriToBase64(uri) as string;
-
-            // ✅ Convert Sheikh Audio to Base64 directly (if URL is present)
-            let sheikhAudioBase64: string | undefined;
-            let sheikhMimeType: string | undefined;
-            
-            if (sheikhClipUrlRef.current) {
-                console.log(`🕌 Fetching sheikh clip for local conversion: ${sheikhClipUrlRef.current}`);
-                try {
-                    sheikhAudioBase64 = await uriToBase64(sheikhClipUrlRef.current) as string;
-                    sheikhMimeType = sheikhClipUrlRef.current.endsWith('.mp3') ? 'audio/mp3' : 'audio/mp4';
-                    console.log(`✅ Local Sheikh clip ready (${(sheikhAudioBase64.length / 1024).toFixed(1)} KB Base64)`);
-                } catch (e) {
-                    console.warn('⚠️ Failed to fetch sheikh audio for base64 locally:', e);
-                }
-            }
-
-            // Phase 3b: Generate phonetic reference ON-DEVICE (zero latency, fully offline).
-            let phoneticRef: string | undefined;
-            try {
-                phoneticRef = phonetizeForQiraat(referenceText, activeQiraat);
-                if (__DEV__) {
-                    console.log(`📜 Phonetic ref (local): ${phoneticRef.length} chars`);
-                }
-            } catch (phErr) {
-                console.warn('[Phonetizer] Local phonetization failed (non-fatal):', phErr);
-                phoneticRef = undefined;
-            }
-
-            // Call to client-side zero-cost Gemini
-            console.log('📤 Sending Base64 payload directly to AI locally...');
-            const uploadPromise = checkRecitation(
-                userAudioBase64,
-                referenceText,
-                sheikhAudioBase64,
-                sheikhMimeType,
-                phoneticRef,
-            );
-
-            setUploadStep('analyzing');
-
-            // ✔️ Check connectivity before spending 30s timeout
-            const isOnline = await checkConnectivity();
-            if (!isOnline) {
-                // Queue for later — user recorded, don't lose it
-                await offlineQueue.addToQueue(uri, referenceText, user.id, surahNumber);
-                Alert.alert(
-                    'لا يوجد اتصال 📡',
-                    'تم حفظ تسجيلك وسيرسل تلقائياً عند عودة الاتصال.',
-                    [{ text: 'حسناً' }]
+            // Learning mode: advance on minor-only errors OR no errors
+            if (learningMode) {
+                const hasNonMinorError = result.mistakes?.some(
+                    (m: any) => m.severity !== 'minor'
                 );
-                return; // finally block will reset states
-            }
-
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('TIMEOUT')), UPLOAD_TIMEOUT)
-            );
-
-            let result;
-            try {
-                result = await Promise.race([uploadPromise, timeoutPromise]) as any;
-            } catch (error: any) {
-                if (error.message === 'TIMEOUT') {
-                    throw new Error('الملف كبير جداً أو الشبكة بطيئة. يرجى تسجيل تلاوة أقصر (أقل من دقيقتين).');
-                }
-                throw error;
-            }
-
-            console.log('✅ Analysis complete:', result);
-
-            if (result.error) {
-                Alert.alert('خطأ في التحليل', result.error);
-            } else {
-                setUploadStep('saving');
-                setFeedback(result);
-                setModalVisible(true);
-
-                // Save results and handle progression
-                await saveResults(result);
-
-                // ✔️ Learning mode: advance on minor-only errors OR no errors
-                // Previously: only advanced when mistakes array was EMPTY (0 errors)
-                // Now: also advances when ALL errors are 'minor' severity
-                if (learningMode) {
-                    const hasNonMinorError = result.mistakes?.some(
-                        (m: any) => m.severity !== 'minor'
-                    );
-                    if (!hasNonMinorError && selectedRange.to < verses.length) {
-                        setSelectedRange(prev => ({
-                            from: prev.to + 1,
-                            to: Math.min(prev.to + 1, verses.length)
-                        }));
-                    }
+                if (!hasNonMinorError && selectedRange.to < verses.length) {
+                    setSelectedRange(prev => ({
+                        from: prev.to + 1,
+                        to: Math.min(prev.to + 1, verses.length)
+                    }));
                 }
             }
         } catch (error: any) {
             console.error('Failed to process recording:', error);
-
-            // ✅ CLEAR ERROR MESSAGES
-            let errorMessage = 'فشل في تحليل التلاوة. يرجى المحاولة مرة أخرى.';
-
-            if (error.message?.includes('كبير جداً') || error.message?.includes('أقصر')) {
-                errorMessage = error.message;
-            } else if (error.message?.includes('network') || error.message?.includes('timeout')) {
-                errorMessage = 'مشكلة في الاتصال بالإنترنت. يرجى التحقق من الشبكة.';
-            }
-
-            Alert.alert('خطأ', errorMessage);
+            Alert.alert('خطأ', 'فشل في تحليل التلاوة. يرجى المحاولة مرة أخرى.');
         } finally {
-            // ✅ ALWAYS reset states - even if upload fails
             setAnalyzing(false);
             setUploadStep('idle');
-            stoppingRef.current = false;
 
-            // Phase 2: Restore expo-audio session after recording.
-            // This re-enables background playback + AudioFocus for the engine.
+            // Restore expo-audio session after recording
             try {
                 await setAudioModeAsync({
                     playsInSilentMode: true,
@@ -596,6 +416,18 @@ function ReciteScreenInner() {
             } catch (sessionErr) {
                 console.warn('[Audio] Session restore warning:', sessionErr);
             }
+        }
+    }
+
+    // Map Muaalem Arabic categories to the English categories used by FeedbackModal
+    function mapMuaalemCategory(cat: string): 'tajweed' | 'pronunciation' | 'elongation' | 'waqf' | 'omission' {
+        switch (cat) {
+            case 'تجويد': return 'tajweed';
+            case 'نطق': return 'pronunciation';
+            case 'مد': return 'elongation';
+            case 'وقف': return 'waqf';
+            case 'حذف': return 'omission';
+            default: return 'tajweed';
         }
     }
 
@@ -745,7 +577,10 @@ function ReciteScreenInner() {
             } else {
                 // Fallback: local AsyncStorage only
                 const stored = await AsyncStorage.getItem('bookmarks');
-                let bookmarks: number[] = stored ? JSON.parse(stored) : [];
+                let bookmarks: number[] = [];
+                if (stored) {
+                    try { bookmarks = JSON.parse(stored); } catch { /* corrupt data */ }
+                }
                 if (isBookmarked) {
                     bookmarks = bookmarks.filter(s => s !== surahNumber);
                     setIsBookmarked(false);
@@ -1045,12 +880,16 @@ function ReciteScreenInner() {
                         selectedRange={selectedRange}
                         activeQiraat={activeQiraat}
                         onVerseChange={setActiveVerseIndex}
-                        recording={recording !== null}
+                        recording={vadRecorder.state.isSessionActive}
                         onStartRecording={startRecording}
                         onStopRecording={stopRecording}
                         analyzing={analyzing}
                         uploadStep={uploadStep}
-                        recordingDuration={recordingDuration}
+                        recordingDuration={vadRecorder.state.elapsedSeconds}
+                        meterHistory={vadRecorder.state.meterHistory}
+                        chunksSent={vadRecorder.state.chunksSent}
+                        chunksCompleted={vadRecorder.state.chunksCompleted}
+                        isFinishing={vadRecorder.state.isFinishing}
                         learningMode={learningMode}
                         onLearningStepComplete={() => {
                             setAudioMode('record');

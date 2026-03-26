@@ -1,3 +1,13 @@
+/**
+ * components/recite/RecordingControls.tsx
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Recording UI component with:
+ *   - Real-time waveform driven by actual metering data (no more Math.random())
+ *   - VAD chunk indicator showing how many chunks have been sent/completed
+ *   - Finish button that stops the session and triggers aggregated feedback
+ * ──────────────────────────────────────────────────────────────────────────────
+ */
+
 import * as React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Animated, {
@@ -7,7 +17,7 @@ import Animated, {
     withTiming,
     withSequence,
 } from 'react-native-reanimated';
-import { Mic, Square } from 'lucide-react-native';
+import { Mic, Square, CheckCircle } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { mediumImpact } from '../../lib/haptics';
 
@@ -20,6 +30,14 @@ interface RecordingControlsProps {
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
     recordingDuration?: number;
     accentColor: string;
+    /** Real-time metering history (0-1 normalised), 20 values from useVADRecorder */
+    meterHistory?: number[];
+    /** Number of VAD chunks sent to Muaalem API */
+    chunksSent?: number;
+    /** Number of VAD chunks that finished analysis */
+    chunksCompleted?: number;
+    /** Whether VAD finishing (waiting for last chunks) */
+    isFinishing?: boolean;
 }
 
 export default function RecordingControls({
@@ -30,6 +48,10 @@ export default function RecordingControls({
     uploadStep = 'idle',
     recordingDuration = 0,
     accentColor,
+    meterHistory,
+    chunksSent = 0,
+    chunksCompleted = 0,
+    isFinishing = false,
 }: RecordingControlsProps) {
     const pulseScale = useSharedValue(1);
 
@@ -56,9 +78,8 @@ export default function RecordingControls({
     const handleRecordPress = () => {
         mediumImpact();
         if (recording) {
-            // Immediately call stop - parent handles state
             onStopRecording();
-        } else if (!analyzing) {
+        } else if (!analyzing && !isFinishing) {
             onStartRecording();
         }
     };
@@ -69,8 +90,38 @@ export default function RecordingControls({
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // ── Finishing state (waiting for chunk results) ───────────────────────────
+    if (isFinishing) {
+        return (
+            <View style={styles.analyzingContainer}>
+                <Text style={styles.analyzingIcon}>{'🔄'}</Text>
+                <ActivityIndicator size="large" color={accentColor} />
+                <Text style={[styles.analyzingText, { color: accentColor }]}>
+                    جارٍ تجميع نتائج التحليل...
+                </Text>
+                <Text style={styles.analyzingHint}>
+                    تم تحليل {chunksCompleted} من {chunksSent} مقاطع
+                </Text>
+                {/* Chunk progress bar */}
+                <View style={styles.chunkProgressBar}>
+                    <View
+                        style={[
+                            styles.chunkProgressFill,
+                            {
+                                width: chunksSent > 0
+                                    ? `${(chunksCompleted / chunksSent) * 100}%`
+                                    : '0%',
+                                backgroundColor: accentColor,
+                            },
+                        ]}
+                    />
+                </View>
+            </View>
+        );
+    }
+
+    // ── Analyzing state (legacy single-shot or final save) ───────────────────
     if (analyzing) {
-        // ✔️ Detailed step-by-step feedback
         const stepConfig = {
             uploading: {
                 icon: '☁️',
@@ -79,7 +130,7 @@ export default function RecordingControls({
             },
             analyzing: {
                 icon: '🧠',
-                title: 'يحلل Gemini تلاوتك...',
+                title: 'يحلل Muaalem تلاوتك...',
                 hint: 'يجري تحليل التجويد والنطق والمخارج',
             },
             saving: {
@@ -127,18 +178,23 @@ export default function RecordingControls({
         );
     }
 
+    // ── Main recording / idle UI ─────────────────────────────────────────────
+
     return (
         <View style={styles.container}>
+            {/* Real waveform from metering data */}
             {recording && (
                 <View style={styles.waveformContainer}>
-                    {[...Array(20)].map((_, i) => (
-                        <Animated.View
+                    {(meterHistory || new Array(20).fill(0)).map((level, i) => (
+                        <View
                             key={i}
                             style={[
                                 styles.waveformBar,
                                 {
-                                    height: Math.random() * 30 + 10,
+                                    // Real metering: map 0-1 → 4px to 40px height
+                                    height: Math.max(4, level * 40),
                                     backgroundColor: accentColor,
+                                    opacity: 0.5 + level * 0.5,
                                 },
                             ]}
                         />
@@ -146,7 +202,17 @@ export default function RecordingControls({
                 </View>
             )}
 
-            {/* Recording Button — pulse ring is a sibling, NOT a wrapper, to preserve touch hit area */}
+            {/* VAD chunk indicator */}
+            {recording && chunksSent > 0 && (
+                <View style={styles.chunkIndicator}>
+                    <CheckCircle size={12} color={Colors.success} />
+                    <Text style={styles.chunkIndicatorText}>
+                        {chunksCompleted}/{chunksSent} مقاطع تم تحليلها
+                    </Text>
+                </View>
+            )}
+
+            {/* Recording Button */}
             <View style={styles.recordButtonContainer}>
                 {recording && (
                     <Animated.View
@@ -167,7 +233,7 @@ export default function RecordingControls({
                     onPress={handleRecordPress}
                     activeOpacity={0.6}
                     accessibilityRole="button"
-                    accessibilityLabel={recording ? 'Stop recording' : 'Start recording'}
+                    accessibilityLabel={recording ? 'إنهاء التسجيل' : 'بدء التسجيل'}
                 >
                     {recording ? (
                         <Square color={Colors.text.inverse} size={32} fill={Colors.text.inverse} />
@@ -180,11 +246,16 @@ export default function RecordingControls({
             {/* Recording Status */}
             <View style={styles.statusContainer}>
                 <Text style={styles.statusText}>
-                    {recording ? `Recording: ${formatTime(recordingDuration)}` : 'Tap to Record'}
+                    {recording ? `تسجيل: ${formatTime(recordingDuration)}` : 'اضغط للتسجيل'}
                 </Text>
+                {recording && (
+                    <Text style={styles.hintText}>
+                        يتم تقطيع الصوت تلقائياً عند السكوت • اضغط ■ للإنهاء
+                    </Text>
+                )}
                 {!recording && (
                     <Text style={styles.hintText}>
-                        Recite the selected verses clearly
+                        اقرأ الآيات المحددة بصوت واضح
                     </Text>
                 )}
             </View>
@@ -192,10 +263,11 @@ export default function RecordingControls({
             {/* Recording Tips */}
             {!recording && (
                 <View style={styles.tipsContainer}>
-                    <Text style={styles.tipsTitle}>📝 Recording Tips:</Text>
-                    <Text style={styles.tipText}>• Find a quiet environment</Text>
-                    <Text style={styles.tipText}>• Speak clearly and at a moderate pace</Text>
-                    <Text style={styles.tipText}>• Hold your device steady</Text>
+                    <Text style={styles.tipsTitle}>📝 نصائح التسجيل:</Text>
+                    <Text style={styles.tipText}>• ابحث عن بيئة هادئة</Text>
+                    <Text style={styles.tipText}>• تحدث بوضوح وبسرعة معتدلة</Text>
+                    <Text style={styles.tipText}>• امسك جهازك بثبات</Text>
+                    <Text style={styles.tipText}>• التقطيع التلقائي يعمل عند السكوت 1.5 ثانية</Text>
                 </View>
             )}
         </View>
@@ -212,12 +284,27 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 3,
-        height: 40,
+        height: 44,
         marginBottom: Spacing.sm,
     },
     waveformBar: {
         width: 3,
         borderRadius: 2,
+        minHeight: 4,
+    },
+    chunkIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 3,
+        borderRadius: BorderRadius.full,
+    },
+    chunkIndicatorText: {
+        fontSize: Typography.fontSize.xs,
+        color: Colors.success,
+        fontWeight: Typography.fontWeight.semibold,
     },
     recordButtonContainer: {
         position: 'relative',
@@ -258,6 +345,7 @@ const styles = StyleSheet.create({
     hintText: {
         fontSize: Typography.fontSize.xs,
         color: Colors.neutral[400],
+        textAlign: 'center',
     },
     analyzingContainer: {
         alignItems: 'center',
@@ -287,6 +375,18 @@ const styles = StyleSheet.create({
         height: 8,
         borderRadius: 4,
     },
+    chunkProgressBar: {
+        width: '60%',
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 2,
+        overflow: 'hidden',
+        marginTop: Spacing.sm,
+    },
+    chunkProgressFill: {
+        height: '100%',
+        borderRadius: 2,
+    },
     tipsContainer: {
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
         padding: Spacing.md,
@@ -304,5 +404,6 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.xs,
         color: Colors.neutral[400],
         marginBottom: 2,
+        textAlign: 'right',
     },
 });

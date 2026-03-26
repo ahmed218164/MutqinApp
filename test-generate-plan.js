@@ -3,7 +3,12 @@
  * اختبار سريع لنموذج gemini-3.1-flash-lite-preview
  */
 
-const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "AIzaSyBwFrGOBHJ3dar4QYL2riQANdrGytlhRHY";
+// SECURITY: API key must be provided via environment variable
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+    console.error("❌ GEMINI_API_KEY environment variable is not set.\n   Usage: GEMINI_API_KEY=your_key node test-generate-plan.js");
+    process.exit(1);
+}
 
 async function testModel(modelName) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -37,7 +42,13 @@ Return ONLY this JSON (no extra text):
 
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
         const jsonStr = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
-        const parsed = JSON.parse(jsonStr);
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonStr);
+        } catch (parseErr) {
+            console.error(`❌ ${modelName}: Failed to parse JSON response:`, jsonStr.substring(0, 200));
+            return false;
+        }
 
         console.log(`✅ ${modelName} SUCCESS:`);
         console.log(`   pages_per_day: ${parsed.pages_per_day}`);

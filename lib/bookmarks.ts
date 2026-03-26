@@ -78,9 +78,14 @@ export async function getUserBookmarks(userId: string): Promise<Bookmark[]> {
     try {
         const cached = await AsyncStorage.getItem(BOOKMARK_CACHE_KEY);
         if (cached) {
-            const cachedData = JSON.parse(cached);
-            if (cachedData.userId === userId && Date.now() - cachedData.timestamp < 300000) {
-                return cachedData.bookmarks;
+            try {
+                const cachedData = JSON.parse(cached);
+                if (cachedData.userId === userId && Date.now() - cachedData.timestamp < 300000) {
+                    return cachedData.bookmarks;
+                }
+            } catch (parseErr) {
+                console.warn('[bookmarks] Corrupt cache, ignoring:', parseErr);
+                await AsyncStorage.removeItem(BOOKMARK_CACHE_KEY);
             }
         }
 

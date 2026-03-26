@@ -247,7 +247,18 @@ ${referenceText}${phoneticSection}`;
         }
 
         const response = await result!.response;
-        const assessment = JSON.parse(response.text());
+        let assessment: any;
+        try {
+            const rawText = response.text();
+            const cleaned = rawText.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
+            assessment = JSON.parse(cleaned);
+        } catch (parseErr) {
+            console.error('Failed to parse Gemini JSON response:', response.text().substring(0, 200));
+            return new Response(
+                JSON.stringify({ mistakes: [], score: 0, error: 'فشل في قراءة نتيجة التحليل من النموذج.' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            );
+        }
         console.log(`✅ Score: ${assessment.score}, Mistakes: ${assessment.mistakes?.length ?? 0}, Model: ${modelUsed}`);
 
         // ── Finished Processing ──────────────────────────────────────────────

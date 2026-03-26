@@ -35,7 +35,16 @@ async function ensureCacheDir(): Promise<void> {
 async function getCacheIndex(): Promise<CacheIndex> {
     try {
         const indexJson = await AsyncStorage.getItem(CACHE_INDEX_KEY);
-        return indexJson ? JSON.parse(indexJson) : {};
+        if (indexJson) {
+            try {
+                return JSON.parse(indexJson) as CacheIndex;
+            } catch (parseErr) {
+                console.warn('[mushaf-cache] Corrupt cache index, resetting:', parseErr);
+                await AsyncStorage.removeItem(CACHE_INDEX_KEY);
+                return {};
+            }
+        }
+        return {};
     } catch (error) {
         console.error('Error reading cache index:', error);
         return {};

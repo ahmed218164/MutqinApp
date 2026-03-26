@@ -1,0 +1,467 @@
+/**
+ * hooks/useVADRecorder.ts
+ * ──────────────────────────────────────────────────────────────────────────────
+ * VAD (Voice Activity Detection) Continuous Chunking Recorder
+ *
+ * Reads audio metering (dB) from expo-av every 100ms. When the level drops
+ * below SILENCE_THRESHOLD_DB for SILENCE_DURATION_MS, the current recording
+ * is stopped, sent to the Muaalem API in the background, and a new recording
+ * starts instantly so the user can continue without interruption.
+ *
+ * On "finish" the hook aggregates all chunk results into a single
+ * MuaalemAssessment for display in FeedbackModal.
+ *
+ * The hook also exposes a `meterLevel` value (0-1 normalised) that
+ * RecordingControls can use to render a real waveform instead of Math.random().
+ * ──────────────────────────────────────────────────────────────────────────────
+ */
+
+import { useRef, useState, useCallback, useEffect } from 'react';
+import { Audio } from 'expo-av';
+import { Alert } from 'react-native';
+import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake } from '../lib/muaalem-api';
+import { mediumImpact } from '../lib/haptics';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/** dB threshold below which we consider "silence" (-45 dB is very quiet) */
+const SILENCE_THRESHOLD_DB = -45;
+
+/** How long the silence must last before we split (ms) */
+const SILENCE_DURATION_MS = 1500;
+
+/** Metering poll interval (ms) */
+const METERING_INTERVAL_MS = 100;
+
+/** Minimum chunk duration in ms before we bother analysing it */
+const MIN_CHUNK_DURATION_MS = 2000;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface ChunkResult {
+    /** 0-based chunk index */
+    index: number;
+    /** Assessment returned by Muaalem (or null if still processing) */
+    assessment: MuaalemAssessment | null;
+    /** Whether this chunk is still being analysed */
+    processing: boolean;
+}
+
+export interface VADRecorderState {
+    /** Whether the overall session is active (user pressed record and hasn't pressed finish) */
+    isSessionActive: boolean;
+    /** Whether expo-av is currently recording right now */
+    isRecording: boolean;
+    /** Current dB-level normalised to 0..1 for waveform rendering */
+    meterLevel: number;
+    /** Raw metering values buffer (last 20 readings) for waveform bars */
+    meterHistory: number[];
+    /** Elapsed seconds since the user started the session */
+    elapsedSeconds: number;
+    /** Number of chunks already split + sent */
+    chunksSent: number;
+    /** Number of chunks that have completed analysis */
+    chunksCompleted: number;
+    /** Whether we are in "finishing" state — waiting for last chunks to resolve */
+    isFinishing: boolean;
+}
+
+export interface UseVADRecorderReturn {
+    state: VADRecorderState;
+    /** Start a new recording session */
+    startSession: () => Promise<void>;
+    /** Finish the session: stop current recording, wait for all chunks, return aggregated result */
+    finishSession: () => Promise<MuaalemAssessment | null>;
+    /** Cancel the session without waiting for results */
+    cancelSession: () => Promise<void>;
+}
+
+// ─── Normaliser ──────────────────────────────────────────────────────────────
+
+/**
+ * Convert dB metering (typically -160..0) into a 0..1 float for UI.
+ * We clamp the useful range to -60..0 dB.
+ */
+function normaliseMeter(db: number): number {
+    const clamped = Math.max(-60, Math.min(0, db));
+    return (clamped + 60) / 60; // -60 → 0, 0 → 1
+}
+
+// ─── History ring-buffer size ────────────────────────────────────────────────
+const HISTORY_SIZE = 20;
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
+
+export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
+    // ── State ────────────────────────────────────────────────────────────────
+    const [state, setState] = useState<VADRecorderState>({
+        isSessionActive: false,
+        isRecording: false,
+        meterLevel: 0,
+        meterHistory: new Array(HISTORY_SIZE).fill(0),
+        elapsedSeconds: 0,
+        chunksSent: 0,
+        chunksCompleted: 0,
+        isFinishing: false,
+    });
+
+    // ── Refs (mutable across renders) ────────────────────────────────────────
+    const recordingRef = useRef<Audio.Recording | null>(null);
+    const meteringTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const silenceStartRef = useRef<number | null>(null);
+    const chunkStartTimeRef = useRef<number>(0);
+    const chunkIndexRef = useRef(0);
+    const chunkResultsRef = useRef<ChunkResult[]>([]);
+    const sessionActiveRef = useRef(false);
+    const isFinishingRef = useRef(false);
+    const referenceTextRef = useRef(referenceText);
+
+    // Keep ref in sync with latest referenceText to avoid stale closures in setInterval
+    useEffect(() => {
+        referenceTextRef.current = referenceText;
+    }, [referenceText]);
+
+    // ── Cleanup on unmount ───────────────────────────────────────────────────
+    useEffect(() => {
+        return () => {
+            clearTimers();
+            if (recordingRef.current) {
+                recordingRef.current.stopAndUnloadAsync().catch(() => {});
+            }
+        };
+    }, []);
+
+    // ── Timer helpers ────────────────────────────────────────────────────────
+
+    function clearTimers() {
+        if (meteringTimerRef.current) {
+            clearInterval(meteringTimerRef.current);
+            meteringTimerRef.current = null;
+        }
+        if (elapsedTimerRef.current) {
+            clearInterval(elapsedTimerRef.current);
+            elapsedTimerRef.current = null;
+        }
+    }
+
+    // ── Create a new expo-av recording with metering enabled ─────────────────
+
+    async function createRecording(): Promise<Audio.Recording> {
+        const { recording } = await Audio.Recording.createAsync(
+            {
+                ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+                isMeteringEnabled: true,
+            },
+        );
+        return recording;
+    }
+
+    // ── Start metering poller ────────────────────────────────────────────────
+
+    function startMeteringPoller() {
+        meteringTimerRef.current = setInterval(async () => {
+            if (!recordingRef.current || !sessionActiveRef.current) return;
+
+            try {
+                const status = await recordingRef.current.getStatusAsync();
+                if (!status.isRecording) return;
+
+                const db = status.metering ?? -160;
+                const normalised = normaliseMeter(db);
+
+                setState(prev => {
+                    const newHistory = [...prev.meterHistory.slice(1), normalised];
+                    return {
+                        ...prev,
+                        meterLevel: normalised,
+                        meterHistory: newHistory,
+                    };
+                });
+
+                // ── VAD logic: detect silence ────────────────────────────────
+                if (db < SILENCE_THRESHOLD_DB) {
+                    // Silence detected
+                    if (silenceStartRef.current === null) {
+                        silenceStartRef.current = Date.now();
+                    } else {
+                        const silenceDuration = Date.now() - silenceStartRef.current;
+                        if (silenceDuration >= SILENCE_DURATION_MS) {
+                            // Silence long enough → split chunk
+                            const chunkDuration = Date.now() - chunkStartTimeRef.current;
+                            if (chunkDuration >= MIN_CHUNK_DURATION_MS) {
+                                await splitChunk();
+                            }
+                            silenceStartRef.current = null;
+                        }
+                    }
+                } else {
+                    // Voice detected → reset silence timer
+                    silenceStartRef.current = null;
+                }
+            } catch (err) {
+                // Metering failure is non-fatal
+                console.warn('[VAD] Metering poll error:', err);
+            }
+        }, METERING_INTERVAL_MS);
+    }
+
+    // ── Split: stop current recording, send to API, start new recording ──────
+
+    async function splitChunk() {
+        if (!recordingRef.current || !sessionActiveRef.current) return;
+
+        const currentRecording = recordingRef.current;
+        recordingRef.current = null;
+
+        try {
+            // Stop current
+            const status = await currentRecording.getStatusAsync();
+            if (status.isRecording || status.canRecord) {
+                await currentRecording.stopAndUnloadAsync();
+            }
+            const uri = currentRecording.getURI();
+
+            // Start new recording immediately (zero gap for the user)
+            if (sessionActiveRef.current && !isFinishingRef.current) {
+                const newRec = await createRecording();
+                recordingRef.current = newRec;
+                chunkStartTimeRef.current = Date.now();
+            }
+
+            // Send stopped chunk to API in background
+            if (uri) {
+                const idx = chunkIndexRef.current++;
+                const chunkEntry: ChunkResult = { index: idx, assessment: null, processing: true };
+                chunkResultsRef.current.push(chunkEntry);
+
+                setState(prev => ({
+                    ...prev,
+                    chunksSent: prev.chunksSent + 1,
+                }));
+
+                // Fire-and-forget (we'll collect results on finish)
+                checkRecitationWithMuaalem(uri, referenceTextRef.current)
+                    .then(assessment => {
+                        chunkEntry.assessment = assessment;
+                        chunkEntry.processing = false;
+                        setState(prev => ({
+                            ...prev,
+                            chunksCompleted: prev.chunksCompleted + 1,
+                        }));
+                    })
+                    .catch(err => {
+                        console.error('[VAD] Chunk analysis failed:', err);
+                        chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع' };
+                        chunkEntry.processing = false;
+                        setState(prev => ({
+                            ...prev,
+                            chunksCompleted: prev.chunksCompleted + 1,
+                        }));
+                    });
+            }
+        } catch (err) {
+            console.error('[VAD] splitChunk error:', err);
+        }
+    }
+
+    // ── Public: Start Session ────────────────────────────────────────────────
+
+    const startSession = useCallback(async () => {
+        if (sessionActiveRef.current) return;
+
+        try {
+            mediumImpact();
+
+            const permission = await Audio.requestPermissionsAsync();
+            if (!permission.granted) {
+                Alert.alert('إذن مطلوب', 'يرجى السماح بالوصول إلى الميكروفون');
+                return;
+            }
+
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: true,
+                playsInSilentModeIOS: true,
+            });
+
+            // Reset state
+            chunkIndexRef.current = 0;
+            chunkResultsRef.current = [];
+            silenceStartRef.current = null;
+            isFinishingRef.current = false;
+            sessionActiveRef.current = true;
+
+            const rec = await createRecording();
+            recordingRef.current = rec;
+            chunkStartTimeRef.current = Date.now();
+
+            setState({
+                isSessionActive: true,
+                isRecording: true,
+                meterLevel: 0,
+                meterHistory: new Array(HISTORY_SIZE).fill(0),
+                elapsedSeconds: 0,
+                chunksSent: 0,
+                chunksCompleted: 0,
+                isFinishing: false,
+            });
+
+            // Start pollers
+            startMeteringPoller();
+
+            const sessionStart = Date.now();
+            elapsedTimerRef.current = setInterval(() => {
+                setState(prev => ({
+                    ...prev,
+                    elapsedSeconds: Math.floor((Date.now() - sessionStart) / 1000),
+                }));
+            }, 1000);
+        } catch (err) {
+            console.error('[VAD] startSession error:', err);
+            sessionActiveRef.current = false;
+            Alert.alert('خطأ', 'فشل بدء التسجيل. حاول مرة أخرى.');
+        }
+    }, [referenceText]);
+
+    // ── Public: Finish Session ───────────────────────────────────────────────
+
+    const finishSession = useCallback(async (): Promise<MuaalemAssessment | null> => {
+        if (!sessionActiveRef.current) return null;
+
+        mediumImpact();
+        isFinishingRef.current = true;
+        sessionActiveRef.current = false;
+
+        setState(prev => ({ ...prev, isFinishing: true, isSessionActive: false }));
+
+        clearTimers();
+
+        // Stop current recording and send as final chunk
+        if (recordingRef.current) {
+            try {
+                const currentRecording = recordingRef.current;
+                recordingRef.current = null;
+
+                const status = await currentRecording.getStatusAsync();
+                if (status.isRecording || status.canRecord) {
+                    await currentRecording.stopAndUnloadAsync();
+                }
+                const uri = currentRecording.getURI();
+
+                if (uri) {
+                    const chunkDuration = Date.now() - chunkStartTimeRef.current;
+                    if (chunkDuration >= MIN_CHUNK_DURATION_MS) {
+                        const idx = chunkIndexRef.current++;
+                        const chunkEntry: ChunkResult = { index: idx, assessment: null, processing: true };
+                        chunkResultsRef.current.push(chunkEntry);
+
+                        setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
+
+                        try {
+                            const assessment = await checkRecitationWithMuaalem(uri, referenceTextRef.current);
+                            chunkEntry.assessment = assessment;
+                            chunkEntry.processing = false;
+                        } catch (err) {
+                            chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع الأخير' };
+                            chunkEntry.processing = false;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[VAD] finishSession stop error:', err);
+            }
+        }
+
+        // Wait for all in-flight chunks to complete (max 30s safety)
+        const deadline = Date.now() + 30_000;
+        while (
+            chunkResultsRef.current.some(c => c.processing) &&
+            Date.now() < deadline
+        ) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+
+        // Aggregate results
+        const aggregated = aggregateChunkResults(chunkResultsRef.current);
+
+        setState(prev => ({
+            ...prev,
+            isFinishing: false,
+            isRecording: false,
+            chunksCompleted: chunkResultsRef.current.filter(c => !c.processing).length,
+        }));
+
+        return aggregated;
+    }, [referenceText]);
+
+    // ── Public: Cancel Session ───────────────────────────────────────────────
+
+    const cancelSession = useCallback(async () => {
+        sessionActiveRef.current = false;
+        isFinishingRef.current = true;
+
+        clearTimers();
+
+        if (recordingRef.current) {
+            try {
+                await recordingRef.current.stopAndUnloadAsync();
+            } catch (_) {}
+            recordingRef.current = null;
+        }
+
+        chunkResultsRef.current = [];
+
+        setState({
+            isSessionActive: false,
+            isRecording: false,
+            meterLevel: 0,
+            meterHistory: new Array(HISTORY_SIZE).fill(0),
+            elapsedSeconds: 0,
+            chunksSent: 0,
+            chunksCompleted: 0,
+            isFinishing: false,
+        });
+    }, []);
+
+    return { state, startSession, finishSession, cancelSession };
+}
+
+// ─── Aggregation ─────────────────────────────────────────────────────────────
+
+/**
+ * Merge all chunk assessments into one final MuaalemAssessment.
+ * - Score = weighted average of non-error chunks
+ * - Mistakes = concatenated from all chunks (deduplicated by description)
+ */
+function aggregateChunkResults(chunks: ChunkResult[]): MuaalemAssessment {
+    const validChunks = chunks.filter(c => c.assessment && !c.assessment.error);
+
+    if (validChunks.length === 0) {
+        // All chunks failed
+        const lastError = chunks.find(c => c.assessment?.error)?.assessment?.error;
+        return {
+            score: 0,
+            mistakes: [],
+            error: lastError || 'فشل تحليل جميع المقاطع.',
+        };
+    }
+
+    // Weighted average score
+    const totalScore = validChunks.reduce((sum, c) => sum + (c.assessment!.score || 0), 0);
+    const avgScore = Math.round(totalScore / validChunks.length);
+
+    // Collect all mistakes, deduplicate by description
+    const seenDescriptions = new Set<string>();
+    const allMistakes: MuaalemMistake[] = [];
+
+    for (const chunk of validChunks) {
+        for (const mistake of chunk.assessment!.mistakes) {
+            if (!seenDescriptions.has(mistake.description)) {
+                seenDescriptions.add(mistake.description);
+                allMistakes.push(mistake);
+            }
+        }
+    }
+
+    return { score: avgScore, mistakes: allMistakes };
+}

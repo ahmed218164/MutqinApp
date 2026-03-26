@@ -60,6 +60,15 @@ export interface UnifiedAudioControlProps {
     /** Detailed upload progress state for user feedback */
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
     recordingDuration?: number;
+    // VAD props (from useVADRecorder)
+    /** Real-time metering history (0-1 normalised), 20 values */
+    meterHistory?: number[];
+    /** Number of VAD chunks sent to Muaalem API */
+    chunksSent?: number;
+    /** Number of VAD chunks that finished analysis */
+    chunksCompleted?: number;
+    /** Whether VAD is finishing (waiting for last chunks) */
+    isFinishing?: boolean;
     // Learning mode
     learningMode?: boolean;
     onLearningStepComplete?: () => void;
@@ -84,6 +93,10 @@ export default function UnifiedAudioControl({
     analyzing,
     uploadStep = 'idle',
     recordingDuration = 0,
+    meterHistory,
+    chunksSent = 0,
+    chunksCompleted = 0,
+    isFinishing = false,
     learningMode = false,
     onLearningStepComplete,
     onSurahEnd,
@@ -449,6 +462,10 @@ export default function UnifiedAudioControl({
                                 uploadStep={uploadStep}
                                 recordingDuration={recordingDuration}
                                 accentColor={accentColor}
+                                meterHistory={meterHistory}
+                                chunksSent={chunksSent}
+                                chunksCompleted={chunksCompleted}
+                                isFinishing={isFinishing}
                             />
                         )}
                     </View>
