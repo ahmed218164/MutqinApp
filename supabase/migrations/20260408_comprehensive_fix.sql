@@ -55,6 +55,12 @@ BEGIN
     END IF;
 END $$;
 
+-- Backfill: fix any legacy rows with NULL SM-2 values (created by old code)
+UPDATE review_schedule
+SET sm2_repetitions = COALESCE(sm2_repetitions, 0),
+    sm2_interval    = COALESCE(sm2_interval, 1),
+    efactor         = COALESCE(efactor, 2.5)
+WHERE sm2_repetitions IS NULL OR sm2_interval IS NULL OR efactor IS NULL;
 
 
 -- ──────────────────────────────────────────────────────────────────
