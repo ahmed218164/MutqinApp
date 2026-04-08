@@ -56,6 +56,13 @@
     "react-dom": "19.1.0"
   },
   "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": ["react-native-zip-archive"]
+      }
+    }
+  },
   "devDependencies": {
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
