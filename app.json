@@ -2,6 +2,7 @@
   "expo": {
     "name": "مُتقِن",
     "slug": "MutqinApp",
+    "scheme": "mutqinapp",
     "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -45,7 +46,13 @@
       "expo-router",
       "expo-sqlite",
       "expo-font",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow مُتقِن to access your microphone for Quran recitation assessment."
+        }
+      ]
     ],
     "assetBundlePatterns": [
       "assets/mushaf/**",

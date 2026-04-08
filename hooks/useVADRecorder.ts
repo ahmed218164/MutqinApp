@@ -19,22 +19,22 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import { Alert } from 'react-native';
-import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake } from '../lib/muaalem-api';
+import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake, AyahRange } from '../lib/muaalem-api';
 import { mediumImpact } from '../lib/haptics';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-/** dB threshold below which we consider "silence" (-45 dB is very quiet) */
-const SILENCE_THRESHOLD_DB = -45;
+/** dB threshold below which we consider "silence" (-35 dB is less sensitive to noise) */
+const SILENCE_THRESHOLD_DB = -35;
 
 /** How long the silence must last before we split (ms) */
-const SILENCE_DURATION_MS = 1500;
+const SILENCE_DURATION_MS = 3000;
 
 /** Metering poll interval (ms) */
 const METERING_INTERVAL_MS = 100;
 
 /** Minimum chunk duration in ms before we bother analysing it */
-const MIN_CHUNK_DURATION_MS = 2000;
+const MIN_CHUNK_DURATION_MS = 3000;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ const HISTORY_SIZE = 20;
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
+export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): UseVADRecorderReturn {
     // ── State ────────────────────────────────────────────────────────────────
     const [state, setState] = useState<VADRecorderState>({
         isSessionActive: false,
@@ -116,11 +116,13 @@ export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
     const sessionActiveRef = useRef(false);
     const isFinishingRef = useRef(false);
     const referenceTextRef = useRef(referenceText);
+    const ayahRangeRef = useRef(ayahRange);
 
     // Keep ref in sync with latest referenceText to avoid stale closures in setInterval
     useEffect(() => {
         referenceTextRef.current = referenceText;
-    }, [referenceText]);
+        ayahRangeRef.current = ayahRange;
+    }, [referenceText, ayahRange]);
 
     // ── Cleanup on unmount ───────────────────────────────────────────────────
     useEffect(() => {
@@ -146,14 +148,41 @@ export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
     }
 
     // ── Create a new expo-av recording with metering enabled ─────────────────
+    //
+    // IMPORTANT: Android's MediaRecorder does NOT natively support WAV output.
+    // Setting extension='.wav' on Android with DEFAULT encoder produces a broken
+    // file (~12KB header only, no actual audio). We use m4a/AAC on Android instead,
+    // which librosa/ffmpeg on the backend handles perfectly.
+    // iOS supports true Linear PCM WAV natively.
 
     async function createRecording(): Promise<Audio.Recording> {
-        const { recording } = await Audio.Recording.createAsync(
-            {
-                ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-                isMeteringEnabled: true,
+        const RECORDING_OPTIONS: Audio.RecordingOptions = {
+            isMeteringEnabled: true,
+            android: {
+                extension: '.m4a',
+                outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+                audioEncoder: Audio.AndroidAudioEncoder.AAC,
+                sampleRate: 16000,
+                numberOfChannels: 1,
+                bitRate: 128000,
             },
-        );
+            ios: {
+                extension: '.wav',
+                audioQuality: Audio.IOSAudioQuality.HIGH,
+                sampleRate: 16000,
+                numberOfChannels: 1,
+                bitRate: 128000,
+                linearPCMBitDepth: 16,
+                linearPCMIsBigEndian: false,
+                linearPCMIsFloat: false,
+            },
+            web: {
+                mimeType: 'audio/webm',
+                bitsPerSecond: 128000,
+            },
+        };
+
+        const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
         return recording;
     }
 
@@ -180,25 +209,21 @@ export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
                 });
 
                 // ── VAD logic: detect silence ────────────────────────────────
-                if (db < SILENCE_THRESHOLD_DB) {
-                    // Silence detected
-                    if (silenceStartRef.current === null) {
-                        silenceStartRef.current = Date.now();
-                    } else {
-                        const silenceDuration = Date.now() - silenceStartRef.current;
-                        if (silenceDuration >= SILENCE_DURATION_MS) {
-                            // Silence long enough → split chunk
-                            const chunkDuration = Date.now() - chunkStartTimeRef.current;
-                            if (chunkDuration >= MIN_CHUNK_DURATION_MS) {
-                                await splitChunk();
-                            }
-                            silenceStartRef.current = null;
-                        }
-                    }
-                } else {
-                    // Voice detected → reset silence timer
-                    silenceStartRef.current = null;
-                }
+                // DISABLED FOR NOW: We operate in strict "Manual Mode".
+                // The recording continues until the user explicitly stops it.
+                // 
+                // if (db < SILENCE_THRESHOLD_DB) {
+                //     if (silenceStartRef.current === null) {
+                //         silenceStartRef.current = Date.now();
+                //     } else {
+                //         const silenceDuration = Date.now() - silenceStartRef.current;
+                //         if (silenceDuration >= SILENCE_DURATION_MS) {
+                //             silenceStartRef.current = null;
+                //         }
+                //     }
+                // } else {
+                //     silenceStartRef.current = null;
+                // }
             } catch (err) {
                 // Metering failure is non-fatal
                 console.warn('[VAD] Metering poll error:', err);
@@ -241,7 +266,7 @@ export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
                 }));
 
                 // Fire-and-forget (we'll collect results on finish)
-                checkRecitationWithMuaalem(uri, referenceTextRef.current)
+                checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current)
                     .then(assessment => {
                         chunkEntry.assessment = assessment;
                         chunkEntry.processing = false;
@@ -349,22 +374,22 @@ export function useVADRecorder(referenceText: string): UseVADRecorderReturn {
                 const uri = currentRecording.getURI();
 
                 if (uri) {
-                    const chunkDuration = Date.now() - chunkStartTimeRef.current;
-                    if (chunkDuration >= MIN_CHUNK_DURATION_MS) {
-                        const idx = chunkIndexRef.current++;
-                        const chunkEntry: ChunkResult = { index: idx, assessment: null, processing: true };
-                        chunkResultsRef.current.push(chunkEntry);
+                    // Always send the final chunk when user explicitly clicks Finish, 
+                    // even if it's shorter than MIN_CHUNK_DURATION_MS, to ensure we get 
+                    // the full recorded buffer and don't discard the final words.
+                    const idx = chunkIndexRef.current++;
+                    const chunkEntry: ChunkResult = { index: idx, assessment: null, processing: true };
+                    chunkResultsRef.current.push(chunkEntry);
 
-                        setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
+                    setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
 
-                        try {
-                            const assessment = await checkRecitationWithMuaalem(uri, referenceTextRef.current);
-                            chunkEntry.assessment = assessment;
-                            chunkEntry.processing = false;
-                        } catch (err) {
-                            chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع الأخير' };
-                            chunkEntry.processing = false;
-                        }
+                    try {
+                        const assessment = await checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current);
+                        chunkEntry.assessment = assessment;
+                        chunkEntry.processing = false;
+                    } catch (err) {
+                        chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع الأخير' };
+                        chunkEntry.processing = false;
                     }
                 }
             } catch (err) {

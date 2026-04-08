@@ -67,7 +67,7 @@ export default function MistakesScreen() {
     useFocusEffect(
         React.useCallback(() => {
             loadMistakes();
-        }, [])
+        }, [user?.id])
     );
 
     async function loadMistakes() {
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     mistakeLabel: {
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.semibold,
-        color: Colors.text.primary,
+        color: Colors.gold[400],
         marginLeft: Spacing.sm,   // RTL: was marginRight
         minWidth: 70,
         textAlign: 'right',

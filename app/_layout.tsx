@@ -23,9 +23,8 @@ import { configureAudioSession } from '../lib/audio-engine';
 // Keep the splash screen visible while fonts are loading
 SplashScreen.preventAutoHideAsync();
 
-// Configure native audio session once at startup
-// Enables background playback + lock screen controls via expo-audio
-configureAudioSession().catch(console.warn);
+// Audio session is configured inside RootLayout via useEffect
+// so we can properly log errors and show recovery UI if needed.
 
 // Ignore specific warnings
 LogBox.ignoreLogs([
@@ -74,6 +73,18 @@ export default function RootLayout() {
             await SplashScreen.hideAsync();
         }
     }, [fontsLoaded, fontError]);
+
+    // Configure audio session with proper error handling
+    const [audioReady, setAudioReady] = React.useState(false);
+    React.useEffect(() => {
+        configureAudioSession()
+            .then(() => setAudioReady(true))
+            .catch((err) => {
+                console.error('[Audio] Session config failed:', err);
+                // Proceed anyway — audio features will degrade gracefully
+                setAudioReady(true);
+            });
+    }, []);
 
     // Don't render until fonts are ready (or failed)
     if (!fontsLoaded && !fontError) {

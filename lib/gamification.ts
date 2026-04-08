@@ -99,7 +99,9 @@ export async function awardXP(userId: string, xpAmount: number, reason: string) 
         });
 
         if (!rpcError && rpcResult) {
-            const { new_total_xp, new_level, leveled_up } = rpcResult as any;
+            // RETURNS TABLE RPCs return an array — extract the first row
+            const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+            const { new_total_xp, new_level, leveled_up } = (row ?? {}) as any;
             if (leveled_up) {
                 await sendAchievementNotification(
                     `المستوى ${new_level}!`,
@@ -370,9 +372,11 @@ export async function updateStreak(userId: string): Promise<'incremented' | 'alr
 
         if (!progress) return 'error';
 
-        const todayStr = new Date().toISOString().split('T')[0]; // e.g. "2026-03-07"
+        // Use LOCAL date (not UTC) to avoid timezone issues.
+        // e.g. user in UTC+3 practicing at 23:00 local → UTC gives next day → streak breaks.
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local TZ
         const lastUpdateStr = progress.updated_at
-            ? new Date(progress.updated_at).toISOString().split('T')[0]
+            ? new Date(progress.updated_at).toLocaleDateString('en-CA')
             : null;
 
         // ── Guard: already updated today → skip silently ──────────────────────

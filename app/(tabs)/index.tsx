@@ -358,7 +358,7 @@ export default function Dashboard() {
             // Fallback chain: reviews → profiles.current_surah → surah_progress max → Sūrah 1
             if (reviews.length > 0) {
                 // Prioritise overdue SM-2 review if one exists
-                const surah = getSurahByNumber(reviews[0].surah);
+                const surah = getSurahByNumber(reviews[0].surah_number);
                 if (surah) setCurrentSurah({ name: surah.name, number: surah.number });
             } else if (profile?.current_surah && profile.current_surah >= 1) {
                 // Use the server-tracked position stored in profiles
@@ -532,7 +532,7 @@ export default function Dashboard() {
 
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalContent}>
                                             {dueReviews.map((review, index) => {
-                                                const surah = getSurahByNumber(review.surah);
+                                                const surah = getSurahByNumber(review.surah_number);
                                                 return (
                                                     <Card
                                                         key={index}
@@ -541,7 +541,7 @@ export default function Dashboard() {
                                                         onPress={() => router.push({
                                                             pathname: '/recite',
                                                             params: {
-                                                                surahNumber: review.surah,
+                                                                surahNumber: review.surah_number,
                                                                 surahName: surah?.name
                                                             }
                                                         })}

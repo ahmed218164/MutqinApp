@@ -232,7 +232,7 @@ export async function clearReciterCache(reciterId: string): Promise<void> {
 export async function getReciterCacheSize(reciterId: string): Promise<number> {
     try {
         const dir = `${MUSHAF_ROOT}${safeName(reciterId)}/`;
-        const info = await FileSystem.getInfoAsync(dir, { size: true });
+        const info = await FileSystem.getInfoAsync(dir);
         return (info as any).size ?? 0;
     } catch {
         return 0;

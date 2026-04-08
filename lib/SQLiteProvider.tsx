@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#ffffff'
+        backgroundColor: '#030712' // Colors.neutral[950] — dark to match app theme
     }
 });
 

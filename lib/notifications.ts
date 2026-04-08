@@ -124,8 +124,8 @@ export function buildSmartNotification(ctx: UserContext, seed: number = Date.now
 
 // ─── Request notification permissions ───────────────────────────────────────
 export async function registerForPushNotifications(): Promise<string | null> {
-    // @ts-ignore
-    if (Device.isDevice && Constants.appOwnership === 'expo') return null;
+    // Only register on physical devices (push tokens don't work on emulators)
+    if (!Device.isDevice) return null;
 
     try {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();

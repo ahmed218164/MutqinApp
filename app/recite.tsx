@@ -22,6 +22,7 @@ import { useThemeColors } from '../constants/dynamicTheme';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 // Muaalem API replaces Gemini — called internally by useVADRecorder
 import { useVADRecorder } from '../hooks/useVADRecorder';
+import { AyahRange, wakeUpMuaalemSpace } from '../lib/muaalem-api';
 // Keep RecitationAssessment type for backward compat with FeedbackModal / saveResults
 import { RecitationAssessment } from '../lib/recitation-storage';
 import { getSurahByNumber } from '../constants/surahs';
@@ -32,6 +33,7 @@ import { updateReviewSchedule } from '../lib/planner';
 import { mediumImpact } from '../lib/haptics';
 import { awardXP, checkAchievements, updateStreak, XP_REWARDS } from '../lib/gamification';
 import { sendGoalCompletionNotification } from '../lib/notifications';
+import { fetchPlan, advanceWardPosition, MemorizationPlan } from '../lib/ward';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FeedbackModal from '../components/recite/FeedbackModal';
 import MushafPager from '../components/recite/MushafPager';
@@ -103,7 +105,14 @@ function ReciteScreenInner() {
             .join(' * ');
     }, [verses, selectedRange]);
 
-    const vadRecorder = useVADRecorder(rangedVersesForRef);
+    // Ayah range sent to API so the backend uses Aya class for canonical text
+    const ayahRangeForRef = React.useMemo<AyahRange>(() => ({
+        surah: surahNumber,
+        ayahFrom: selectedRange.from,
+        ayahTo: selectedRange.to,
+    }), [surahNumber, selectedRange]);
+
+    const vadRecorder = useVADRecorder(rangedVersesForRef, ayahRangeForRef);
 
     // UI state derived from VAD
     const [analyzing, setAnalyzing] = React.useState(false);
@@ -186,7 +195,16 @@ function ReciteScreenInner() {
         }
     }, []);
 
-    // VAD recorder cleanup is handled internally by useVADRecorder's own useEffect.
+    // ── Cleanup on unmount: stop audio engine + cancel pending API calls ────
+    const abortControllerRef = React.useRef(new AbortController());
+    React.useEffect(() => {
+        return () => {
+            // Signal all pending fetches to abort
+            abortControllerRef.current.abort();
+            // Stop any audio playback to release resources
+            try { audioEngine.destroy(); } catch {}
+        };
+    }, []);
 
     // Load bookmark state — Supabase (synced) with AsyncStorage fallback
     React.useEffect(() => {
@@ -220,9 +238,12 @@ function ReciteScreenInner() {
         }
     }
 
-    // Fetch verses on mount
+    // Fetch verses on mount + warm up the HF Space
     React.useEffect(() => {
         fetchSurah(surahNumber);
+        // Pre-flight: wake the HF Space from sleep so the model boots
+        // while the user is browsing / setting up their recitation range.
+        wakeUpMuaalemSpace(abortControllerRef.current.signal);
     }, [surahNumber]);
 
     // Fetch Heatmap
@@ -295,20 +316,70 @@ function ReciteScreenInner() {
         }
     }
 
-    // ── Navigation Logic ───────────────────────────────────────────
+    // ── Navigation Logic (plan-aware) ──────────────────────────────────────
+    // The "next" surah depends on the user's memorization plan direction:
+    //   forward:  surah + 1 (1→2→3→114)
+    //   backward: surah - 1 (114→113→112→1)
+    //   both:     determined by which side this surah belongs to
+    const planRef = React.useRef<MemorizationPlan | null>(null);
+
+    // Fetch plan once on mount (lightweight — single row)
+    React.useEffect(() => {
+        if (user) {
+            fetchPlan(user.id).then(p => { planRef.current = p; });
+        }
+    }, [user?.id]);
+
+    /**
+     * Determine which side of the plan this surah belongs to.
+     * For 'both' plans: compare current surah to fwd/bwd cursors.
+     */
+    const getPlanSide = React.useCallback((): 'forward' | 'backward' => {
+        const plan = planRef.current;
+        if (!plan) return 'forward'; // No plan = default forward
+        if (plan.direction === 'forward') return 'forward';
+        if (plan.direction === 'backward') return 'backward';
+        // 'both': check which cursor matches the current surah
+        if (surahNumber === plan.bwdSurah) return 'backward';
+        return 'forward'; // default to forward if ambiguous
+    }, [surahNumber]);
+
     const handleNextSurah = React.useCallback(() => {
-        const nextSurahNumber = surahNumber + 1;
-        if (nextSurahNumber <= 114) {
-            const nextSurah = getSurahByNumber(nextSurahNumber);
-            if (nextSurah) {
-                router.setParams({
-                    surahNumber: nextSurahNumber.toString(),
-                    surahName: nextSurah.name,
-                    activeNarration: activeQiraat
-                });
+        const side = getPlanSide();
+        let nextSurahNumber: number;
+
+        if (side === 'backward') {
+            nextSurahNumber = surahNumber - 1;
+            if (nextSurahNumber < 1) {
+                // Reached Al-Fatiha going backwards — journey complete
+                Alert.alert(
+                    '🎉 ما شاء الله!',
+                    'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
+                    [{ text: 'الحمد لله', style: 'default' }]
+                );
+                return;
+            }
+        } else {
+            nextSurahNumber = surahNumber + 1;
+            if (nextSurahNumber > 114) {
+                Alert.alert(
+                    '🎉 ما شاء الله!',
+                    'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
+                    [{ text: 'الحمد لله', style: 'default' }]
+                );
+                return;
             }
         }
-    }, [surahNumber, activeQiraat, router]);
+
+        const nextSurah = getSurahByNumber(nextSurahNumber);
+        if (nextSurah) {
+            router.setParams({
+                surahNumber: nextSurahNumber.toString(),
+                surahName: nextSurah.name,
+                activeNarration: activeQiraat
+            });
+        }
+    }, [surahNumber, activeQiraat, router, getPlanSide]);
 
     // Sync Active Page when verse changes (Audio Playback)
     React.useEffect(() => {
@@ -504,43 +575,75 @@ function ReciteScreenInner() {
 
             await checkAchievements(userId);
 
-            // ── ✅ FIXED: Surah completion via server RPC ─────────────────────
-            // upsert_surah_progress accumulates verse ranges and returns
-            // out_completed=true only when ALL verses have been practised.
+            // ── Surah completion: direct check + RPC upsert ───────────────────
+            // Priority 1: Direct client-side check — if the user recited all
+            // verses in one session (ayahTo >= totalVerses), it's immediately
+            // complete without waiting for RPC accumulation to reach 100%.
+            // Priority 2: RPC accumulation for multi-session completion tracking.
             const surahData = getSurahByNumber(surahNumber);
             if (surahData && surahData.verses > 0) {
+                const totalVerses = surahData.verses;
+
+                // ── Direct single-session surah completion check ───────────
+                const isDirectlyComplete = selectedRange.to >= totalVerses && selectedRange.from === 1;
+                console.log(`[saveResults] Range ${selectedRange.from}–${selectedRange.to} of ${totalVerses} verses. Direct complete: ${isDirectlyComplete}`);
+
+                // ── RPC: update cumulative progress in DB ─────────────────
                 const { data: progressData, error: progressError } = await supabase
                     .rpc('upsert_surah_progress', {
                         p_user_id:      userId,
                         p_surah:        surahNumber,
                         p_verse_from:   selectedRange.from,
                         p_verse_to:     selectedRange.to,
-                        p_total_verses: surahData.verses,
+                        p_total_verses: totalVerses,
                     });
 
+                let isSurahCompleted = isDirectlyComplete; // client-side check wins
+                let versesDone = selectedRange.to - selectedRange.from + 1;
+
                 if (progressError) {
-                    // RPC not yet deployed — graceful degradation, no crash
-                    console.warn('[saveResults] upsert_surah_progress unavailable:', progressError.message);
+                    console.warn('[saveResults] upsert_surah_progress failed:', progressError.message);
                 } else {
-                    const result = Array.isArray(progressData) ? progressData[0] : progressData;
-                    const isSurahCompleted: boolean = result?.out_completed ?? false;
-                    const versesDone: number        = result?.out_verses_done ?? 0;
+                    const rpcResult = Array.isArray(progressData) ? progressData[0] : progressData;
+                    // RPC may report completion from accumulated history
+                    isSurahCompleted = isSurahCompleted || (rpcResult?.out_completed ?? false);
+                    versesDone       = rpcResult?.out_verses_done ?? versesDone;
+                    console.log(`[saveResults] Surah ${surahNumber}: ${versesDone}/${totalVerses} verses (rpc_completed=${rpcResult?.out_completed}, final=${isSurahCompleted})`);
+                }
 
-                    console.log(`[saveResults] Surah ${surahNumber}: ${versesDone}/${surahData.verses} verses (completed=${isSurahCompleted})`);
+                if (isSurahCompleted) {
+                    const side = getPlanSide();
+                    console.log(`[saveResults] 🎉 Surah ${surahNumber} complete! Plan side: ${side}`);
+                    await sendGoalCompletionNotification(surahName);
 
-                    if (isSurahCompleted) {
-                        await sendGoalCompletionNotification(surahName);
+                    // Advance ward position in DB (plan-aware)
+                    try {
+                        await advanceWardPosition(userId, side, surahNumber, selectedRange.to, totalVerses);
+                        console.log(`[saveResults] Ward position advanced (${side})`);
+                    } catch (wardErr) {
+                        console.warn('[saveResults] advanceWardPosition failed:', wardErr);
+                    }
 
-                        const nextSurahNumber = surahNumber + 1;
-                        if (nextSurahNumber <= 114) {
-                            const nextSurah = getSurahByNumber(nextSurahNumber);
-                            if (nextSurah) {
-                                setTimeout(() => {
-                                    setModalVisible(false);
-                                    handleNextSurah();
-                                }, 2500);
-                            }
-                        }
+                    // Determine if there IS a next surah in this direction
+                    const hasNext = side === 'backward'
+                        ? surahNumber > 1    // backward: can go to surah 1
+                        : surahNumber < 114; // forward: can go to surah 114
+
+                    if (hasNext) {
+                        setTimeout(() => {
+                            setModalVisible(false);
+                            handleNextSurah();
+                        }, 2500);
+                    } else {
+                        // Reached the absolute end of the Quran in this direction
+                        setTimeout(() => {
+                            setModalVisible(false);
+                            Alert.alert(
+                                '🎉 ما شاء الله!',
+                                'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
+                                [{ text: 'الحمد لله', style: 'default' }]
+                            );
+                        }, 2500);
                     }
                 }
             }
@@ -921,11 +1024,11 @@ function ReciteScreenInner() {
                 />
 
                 {/* Tafseer Bottom Sheet — Feature I */}
+                {/* Props: targetAyah (single ayah from long-press) or pageAyahs (page mode) */}
                 <TafseerBottomSheet
                     visible={tafseerVisible}
                     onClose={() => setTafseerVisible(false)}
-                    tafseer={tafseerData}
-                    loading={tafseerLoading}
+                    targetAyah={tafseerData ? { surah: tafseerData.surah, ayah: tafseerData.ayah } : null}
                 />
 
             </SafeAreaView>
@@ -1077,7 +1180,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: Spacing['3xl'],
-        backgroundColor: '#fff',
+        backgroundColor: StaticColors.neutral[950],
     },
     loadingText: {
         marginTop: Spacing.md,
@@ -1090,7 +1193,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: Spacing['3xl'],
-        backgroundColor: '#fff',
+        backgroundColor: StaticColors.neutral[950],
     },
     errorText: {
         marginTop: Spacing.lg,

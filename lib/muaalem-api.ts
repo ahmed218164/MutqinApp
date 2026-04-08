@@ -8,7 +8,7 @@
  *
  * Endpoint: POST /correct-recitation
  *   - Accepts: multipart/form-data { file: audio, uthmani_text: string }
- *   - Returns: { sifat: [...], ... }
+ *   - Returns: { score, mistakes[], sifat[], ... }
  *
  * This module converts the Muaalem response format into the standard
  * MuaalemAssessment interface used throughout MutqinApp.
@@ -16,11 +16,16 @@
  */
 
 import * as FileSystem from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 
 const MUAALEM_API_URL = 'https://dr364873-tajweed-base.hf.space/correct-recitation';
+const MUAALEM_BASE_URL = 'https://dr364873-tajweed-base.hf.space';
 
 // ─── Request timeout (ms) ────────────────────────────────────────────────────
-const REQUEST_TIMEOUT_MS = 45_000; // 45 seconds — HF Spaces cold-start can be slow
+// Cold start on HF Spaces downloads a 2.42GB model → can take 3-4 min.
+// After warm-up, inference for 6 ayahs takes ~20s.
+// Set to 5 minutes to cover cold-start + inference.
+const REQUEST_TIMEOUT_MS = 300_000; // 5 minutes
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -38,34 +43,103 @@ export interface MuaalemAssessment {
     error?: string;
 }
 
+// ─── Warm-up helper ──────────────────────────────────────────────────────────
+// Call this when the recitation screen MOUNTS (before the user starts recording)
+// to wake the HF Space from sleep. Cold boot takes ~3 min — this buys time.
+
+let _warmUpSent = false;
+
+/**
+ * Fire-and-forget HEAD request to wake the HF Space.
+ * Safe to call multiple times — only fires once per app session.
+ */
+export function wakeUpMuaalemSpace(signal?: AbortSignal): void {
+    if (_warmUpSent) return;
+    _warmUpSent = true;
+    console.log('[Muaalem API] Sending warm-up ping to HF Space...');
+    fetch(MUAALEM_BASE_URL, { method: 'HEAD', signal })
+        .then(() => console.log('[Muaalem API] Warm-up ping OK'))
+        .catch((e) => {
+            if (e?.name !== 'AbortError') {
+                console.log('[Muaalem API] Warm-up ping failed (Space may be starting)');
+            }
+        });
+}
+
 // ─── Main API call ───────────────────────────────────────────────────────────
+
+export interface AyahRange {
+    surah: number;
+    ayahFrom: number;
+    ayahTo: number;
+}
 
 /**
  * Send an audio recording to the Muaalem Tajweed API for evaluation.
  *
  * @param audioUri  Local file URI (e.g. from expo-av Recording.getURI())
- * @param uthmaniText  The Uthmani reference text the student should have recited
+ * @param uthmaniText  The Uthmani reference text (fallback if ayahRange not provided)
+ * @param ayahRange  Surah + ayah range — backend uses Aya class for canonical text
  * @returns MuaalemAssessment with score + detailed mistakes
  */
 export async function checkRecitationWithMuaalem(
     audioUri: string,
     uthmaniText: string,
+    ayahRange?: AyahRange,
 ): Promise<MuaalemAssessment> {
     try {
         // Validate file exists before uploading
-        const fileInfo = await FileSystem.getInfoAsync(audioUri);
+        const fileInfo = await getInfoAsync(audioUri);
         if (!fileInfo.exists) {
             return { score: 0, mistakes: [], error: 'ملف التسجيل غير موجود.' };
         }
 
+        // Guard against near-silent / empty recordings from VAD
+        // Anything under 10 KB is almost certainly too short to be a real recitation
+        const MIN_AUDIO_BYTES = 10_240; // 10 KB
+        const fileSize = (fileInfo as any).size ?? 0;
+        if (fileSize < MIN_AUDIO_BYTES) {
+            console.warn(
+                `[Muaalem API] Audio file too small (${fileSize} bytes < ${MIN_AUDIO_BYTES} bytes). ` +
+                `Likely a silent chunk — skipping upload.`
+            );
+            return {
+                score: 0,
+                mistakes: [],
+                error: 'التسجيل قصير جداً أو صامت. يرجى التحدث بوضوح وإعادة المحاولة.',
+            };
+        }
+
         const formData = new FormData();
-        const filename = audioUri.split('/').pop() || 'recitation.wav';
+        const filename = audioUri.split('/').pop() || 'recitation.m4a';
+        const ext = filename.split('.').pop()?.toLowerCase() ?? 'm4a';
+        const mimeType = ext === 'wav' ? 'audio/wav' : ext === 'm4a' ? 'audio/mp4' : 'audio/webm';
         formData.append('file', {
             uri: audioUri,
             name: filename,
-            type: 'audio/wav',
+            type: mimeType,
         } as any);
         formData.append('uthmani_text', uthmaniText);
+
+        // If ayah range is provided, send it so the backend can use the Aya class
+        // for canonical text lookup (bypasses SQLite encoding differences).
+        if (ayahRange) {
+            formData.append('surah', String(ayahRange.surah));
+            formData.append('ayah_from', String(ayahRange.ayahFrom));
+            formData.append('ayah_to', String(ayahRange.ayahTo));
+        }
+
+        // ── Debug: log what we are about to send ─────────────────────────────
+        console.log('[Muaalem API] Sending payload:', {
+            audioUri,
+            filename,
+            mimeType,
+            fileSizeBytes: fileSize,
+            uthmaniTextLength: uthmaniText.length,
+            uthmaniTextPreview: uthmaniText.slice(0, 80),
+            ayahRange: ayahRange ?? 'not provided',
+            endpoint: MUAALEM_API_URL,
+        });
 
         // Race between fetch and a timeout
         const controller = new AbortController();
@@ -94,7 +168,7 @@ export async function checkRecitationWithMuaalem(
         // User-friendly error mapping
         let errorMessage = 'حدث خطأ أثناء الاتصال بالخادم.';
         if (error.name === 'AbortError' || error.message?.includes('abort')) {
-            errorMessage = 'انتهت مهلة الاتصال بالخادم. يرجى المحاولة مرة أخرى.';
+            errorMessage = 'انتهت مهلة الاتصال بالخادم. الخادم قد يكون في مرحلة التشغيل. يرجى الانتظار دقيقة والمحاولة مرة أخرى.';
         } else if (error.message?.includes('network') || error.message?.includes('Network')) {
             errorMessage = 'مشكلة في الاتصال بالإنترنت. يرجى التحقق من الشبكة.';
         }
@@ -103,61 +177,109 @@ export async function checkRecitationWithMuaalem(
     }
 }
 
+// ─── Human-readable Arabic labels for tajweed properties ─────────────────────
+
+const PROPERTY_LABELS: Record<string, string> = {
+    hams_or_jahr:       'الهمس والجهر',
+    shidda_or_rakhawa:  'الشدة والرخاوة',
+    tafkheem_or_taqeeq: 'التفخيم والترقيق',
+    itbaq:              'الإطباق والانفتاح',
+    safeer:             'الصفير',
+    qalqla:             'القلقلة',
+    tikraar:            'التكرار',
+    tafashie:           'التفشي',
+    istitala:           'الاستطالة',
+    ghonna:             'الغنة',
+};
+
 // ─── Response mapper ─────────────────────────────────────────────────────────
 
 /**
  * Convert the raw Muaalem API response into a MuaalemAssessment.
  *
- * The API returns an object with a `sifat` array. Each sifa represents a
- * Tajweed rule instance with `is_correct`, `name`, `golden_len`, `predicted_len`, etc.
+ * The backend now returns (comparison-based scoring):
+ *   - `score`:               Integer 0–100
+ *   - `total_sifat`:         Total sifa objects (one per phoneme group)
+ *   - `total_rules_checked`: Total tajweed rule comparisons made
+ *   - `total_mismatches`:    Rules where predicted ≠ reference
+ *   - `mistakes`:            Array of {ayah, phoneme, rule, expected, actual, confidence}
  *
- * Penalty points:
- *   - major  (diff > 1 count): 10 points
- *   - moderate (diff == 1):     5 points
- *   - critical (0 diff but wrong):  8 points
+ * Each mistake means the model detected a DIFFERENT tajweed property value
+ * in the audio compared to the expected reference recitation.
  */
 function mapMuaalemResponseToMutqin(data: any): MuaalemAssessment {
     const mistakes: MuaalemMistake[] = [];
-    let penaltyPoints = 0;
 
-    if (data.sifat && Array.isArray(data.sifat)) {
-        for (const sifa of data.sifat) {
-            const isCorrect = sifa.is_correct ?? true;
-            if (isCorrect) continue;
+    // ── Step 1: Use backend pre-computed score ────────────────────────────
+    let score: number;
+    if (typeof data.score === 'number' && data.score >= 0 && data.score <= 100) {
+        score = data.score;
+        console.log(
+            `[Muaalem] Backend score: ${score}% ` +
+            `(${data.total_mismatches ?? '?'}/${data.total_rules_checked ?? '?'} rules mismatched)`
+        );
+    } else {
+        score = 100; // fallback if backend didn't return score
+    }
 
-            const ruleName: string = sifa.name || 'حكم تجويدي';
-            const expectedLen: number = sifa.golden_len || 0;
-            const actualLen: number = sifa.predicted_len || 0;
-            const diff = Math.abs(expectedLen - actualLen);
+    // ── Step 2: Map backend mistakes to MuaalemMistake format ─────────────
+    // Backend mistake shape: {ayah, phoneme, rule, expected, actual, confidence}
+    if (data.mistakes && Array.isArray(data.mistakes)) {
+        for (const m of data.mistakes) {
+            const phoneme = m.phoneme || '';
+            const rule = m.rule || '';
+            const expected = m.expected || '';
+            const actual = m.actual || '';
+            const confidence = m.confidence ?? null;
+            const ayah = m.ayah || '';
 
-            // Determine severity from the magnitude of the length difference
+            // Map rule name to Arabic label
+            const arabicRule = PROPERTY_LABELS[rule] || rule;
+
+            // Severity: high confidence on a WRONG prediction = critical mistake.
+            // Low confidence on a wrong prediction = the model is unsure, minor.
             let severity: MuaalemMistake['severity'] = 'moderate';
-            if (diff > 1) severity = 'major';
-            else if (diff === 0) severity = 'critical'; // wrong rule application, not a length issue
+            if (confidence !== null) {
+                if (confidence >= 0.8)      severity = 'critical'; // model is very sure it's different
+                else if (confidence >= 0.6) severity = 'major';
+                else if (confidence >= 0.4) severity = 'moderate';
+                else                        severity = 'minor';   // model unsure, might be borderline
+            }
 
-            // Determine category
+            // Category mapping based on rule type
             let category: MuaalemMistake['category'] = 'تجويد';
-            if (diff > 0) category = 'مد';
+            if (['qalqla', 'ghonna', 'tafashie', 'istitala'].includes(rule)) {
+                category = 'نطق';
+            }
 
-            // Build human-readable description
             const description =
-                diff > 0
-                    ? `خطأ في مقدار ${ruleName}. نطقت ${actualLen} حركات والصحيح ${expectedLen}.`
-                    : `خطأ في تطبيق ${ruleName}`;
+                `خطأ في ${arabicRule} عند "${phoneme}" (${ayah}): ` +
+                `المتوقع "${expected}" لكن تم نطق "${actual}".`;
 
             mistakes.push({
-                word: sifa.word || 'كلمة',
-                expected: ruleName,
+                word:     phoneme || 'حرف',
+                expected: `${arabicRule}: ${expected}`,
                 description,
                 category,
                 severity,
             });
-
-            // Accumulate penalty
-            penaltyPoints += severity === 'major' ? 10 : severity === 'critical' ? 8 : 5;
         }
     }
 
-    const score = Math.max(0, 100 - penaltyPoints);
+    // ── Step 3: If score < 100 but no specific mistakes were mapped ────────
+    if (score < 100 && mistakes.length === 0) {
+        const mismatches = data.total_mismatches ?? 0;
+        if (mismatches > 0) {
+            mistakes.push({
+                word: '—',
+                expected: 'قواعد التجويد',
+                description: `تم اكتشاف ${mismatches} خطأ في قواعد التجويد عند مقارنة التلاوة بالمرجع.`,
+                category: 'تجويد',
+                severity: score < 70 ? 'major' : score < 90 ? 'moderate' : 'minor',
+            });
+        }
+    }
+
     return { score, mistakes };
 }
+

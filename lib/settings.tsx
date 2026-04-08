@@ -11,7 +11,7 @@ interface SettingsContextType {
 const SettingsContext = React.createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+    const [theme, setTheme] = React.useState<'light' | 'dark'>('dark');
     const [fontSize, setFontSizeState] = React.useState(20);
 
     React.useEffect(() => {

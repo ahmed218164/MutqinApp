@@ -1,16 +1,18 @@
 /**
  * Offline Upload Queue System
- * Queues failed uploads and retries when network is restored
+ * Queues failed uploads and retries when network is restored.
+ * Uses the Muaalem API pipeline (same as VAD recorder).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { checkRecitationViaStorage, RecitationAssessment } from './recitation-storage';
+import { checkRecitationWithMuaalem, MuaalemAssessment, AyahRange } from './muaalem-api';
 import { checkConnectivity } from './network';
 
 interface QueuedUpload {
   id: string;
   audioUri: string;
   referenceText: string;
+  ayahRange?: AyahRange;
   userId: string;
   surahNumber: number;
   timestamp: number;
@@ -75,7 +77,8 @@ export class OfflineUploadQueue {
     audioUri: string,
     referenceText: string,
     userId: string,
-    surahNumber: number
+    surahNumber: number,
+    ayahRange?: AyahRange,
   ): Promise<string> {
     await this.ensureLoaded();
     if (this.queue.length >= MAX_QUEUE_SIZE) {
@@ -83,11 +86,12 @@ export class OfflineUploadQueue {
     }
 
     const upload: QueuedUpload = {
-      id: `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `upload_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       audioUri,
       referenceText,
       userId,
       surahNumber,
+      ayahRange,
       timestamp: Date.now(),
       retryCount: 0,
     };
@@ -107,23 +111,23 @@ export class OfflineUploadQueue {
 
     const isOnline = await checkConnectivity();
     if (!isOnline) {
-      console.log('⚠️ Offline - skipping queue processing');
+      console.log('⚠️ Offline — skipping queue processing');
       return;
     }
 
     this.processing = true;
     console.log(`📤 Processing ${this.queue.length} queued uploads...`);
 
-    const results: Array<{ id: string; success: boolean; result?: RecitationAssessment }> = [];
+    const results: Array<{ id: string; success: boolean; result?: MuaalemAssessment }> = [];
 
     for (const upload of [...this.queue]) {
       try {
         console.log(`📤 Uploading ${upload.id} (attempt ${upload.retryCount + 1})...`);
 
-        const result = await checkRecitationViaStorage(
+        const result = await checkRecitationWithMuaalem(
           upload.audioUri,
           upload.referenceText,
-          upload.userId
+          upload.ayahRange,
         );
 
         results.push({ id: upload.id, success: true, result });

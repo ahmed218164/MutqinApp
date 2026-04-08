@@ -241,7 +241,7 @@ async function updateReviewScheduleClientFallback(
             .from('review_schedule')
             .select('efactor, sm2_interval, sm2_repetitions, quality, mistake_count')
             .eq('user_id', userId)
-            .eq('surah', surahNumber)
+            .eq('surah_number', surahNumber)   // ← FIXED: was 'surah'
             .maybeSingle();
 
         const currentState: SM2State = existing
@@ -264,7 +264,7 @@ async function updateReviewScheduleClientFallback(
             .upsert(
                 {
                     user_id:         userId,
-                    surah:           surahNumber,
+                    surah_number:    surahNumber,           // ← FIXED: was 'surah'
                     last_reviewed:   new Date().toISOString().split('T')[0],
                     next_review:     nextReviewStr,
                     mistake_count:   quality < 3
@@ -275,7 +275,7 @@ async function updateReviewScheduleClientFallback(
                     sm2_repetitions: newState.sm2_repetitions,
                     quality,
                 },
-                { onConflict: 'user_id,surah' }
+                { onConflict: 'user_id,surah_number' }     // ← FIXED: was 'user_id,surah'
             );
 
         console.log(
@@ -306,10 +306,10 @@ async function maybeScheduleReviewNotification(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface DueReview {
-    surah: number;
-    next_review: string;     // mapped from review_date
-    efactor: number;         // mapped from ease_factor
-    sm2_repetitions: number; // mapped from repetitions
+    surah_number: number;    // renamed from 'surah' to match DB column
+    next_review: string;
+    efactor: number;
+    sm2_repetitions: number;
     days_overdue: number;
 }
 
@@ -344,7 +344,7 @@ export async function fetchDueReviews(userId: string): Promise<DueReview[]> {
         _rpcUnavailableLogged  = false;
         // Map renamed RPC columns → DueReview interface, then cap at MAX_DAILY_REVIEWS
         const mapped = ((data as any[]) ?? []).map((row) => ({
-            surah:           row.out_surah   ?? row.surah,
+            surah_number:    row.out_surah   ?? row.surah_number ?? row.surah,
             next_review:     row.review_date ?? row.next_review,
             efactor:         row.ease_factor ?? row.efactor ?? 2.5,
             sm2_repetitions: row.repetitions ?? row.sm2_repetitions ?? 0,
@@ -366,7 +366,7 @@ export async function fetchDueReviews(userId: string): Promise<DueReview[]> {
             const today = new Date().toISOString().split('T')[0];
             const { data, error } = await supabase
                 .from('review_schedule')
-                .select('surah, next_review, efactor, sm2_repetitions')
+                .select('surah_number, next_review, efactor, sm2_repetitions')  // ← FIXED: was 'surah'
                 .eq('user_id', userId)
                 .lte('next_review', today)
                 .order('next_review', { ascending: true })
@@ -386,7 +386,8 @@ export async function fetchDueReviews(userId: string): Promise<DueReview[]> {
             }
 
             return (data ?? []).map((row) => ({
-                ...row,
+                surah_number:    row.surah_number ?? (row as any).surah ?? 0,
+                next_review:     row.next_review,
                 efactor:         row.efactor         ?? 2.5,
                 sm2_repetitions: row.sm2_repetitions ?? 0,
                 days_overdue:    Math.max(
@@ -396,7 +397,7 @@ export async function fetchDueReviews(userId: string): Promise<DueReview[]> {
                         (1000 * 60 * 60 * 24)
                     )
                 ),
-            }));
+            })) as DueReview[];
         } catch (fallbackError) {
             console.error('Error fetching due reviews (fallback):', fallbackError);
             return [];

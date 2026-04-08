@@ -18,6 +18,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
   const maxRetries = 3;
   let lastError: Error | null = null;
+  // Only retry idempotent/safe methods — retrying POST/DELETE/PATCH can cause
+  // duplicate achievements, double XP awards, or other data corruption.
+  const method = (options?.method ?? 'GET').toUpperCase();
+  const isSafeToRetry = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -30,7 +34,7 @@ const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promi
         error.message?.includes('timeout') ||
         error.message?.includes('fetch');
 
-      if (isNetworkError && attempt < maxRetries) {
+      if (isNetworkError && isSafeToRetry && attempt < maxRetries) {
         const delay = Math.pow(2, attempt - 1) * 1000;
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;

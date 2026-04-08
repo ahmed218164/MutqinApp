@@ -58,7 +58,7 @@ export default function ProfileScreen() {
         React.useCallback(() => {
             fetchAnalytics();
             loadWeeklyReport();
-        }, [])
+        }, [user?.id])
     );
 
     async function fetchAnalytics() {
@@ -195,6 +195,8 @@ export default function ProfileScreen() {
     }
 
     function calculateStreak(logs: DailyLog[]): number {
+        // Use streak from gamification system (user_progress table) as primary.
+        // This is a fallback for when the gamification data hasn't loaded yet.
         if (logs.length === 0) return 0;
         let streak = 0;
         const today = new Date();
@@ -203,7 +205,7 @@ export default function ProfileScreen() {
         for (let i = 0; i < 365; i++) {
             const checkDate = new Date(today);
             checkDate.setDate(checkDate.getDate() - i);
-            const dateStr = checkDate.toISOString().split('T')[0];
+            const dateStr = checkDate.toLocaleDateString('en-CA'); // Local timezone
 
             const hasActivity = logs.some(log => log.date === dateStr && log.pages_completed > 0);
             if (hasActivity) {
@@ -425,6 +427,10 @@ export default function ProfileScreen() {
                                 <Text style={styles.cardTitle}>خريطة النشاط</Text>
                                 {/* try/catch guard: ContributionGraph crashes if values is empty or malformed */}
                                 {contributionData.length > 0 ? (
+                                    <React.Fragment>
+                                        {(() => {
+                                            try {
+                                                return (
                                     <ContributionGraph
                                         values={contributionData}
                                         endDate={new Date()}
@@ -446,6 +452,18 @@ export default function ProfileScreen() {
                                         }}
                                         tooltipDataAttrs={() => ({} as any)}
                                     />
+                                                );
+                                            } catch {
+                                                return (
+                                    <View style={{ height: 120, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: Colors.text.tertiary, fontSize: Typography.fontSize.sm }}>
+                                            تعذر عرض خريطة النشاط
+                                        </Text>
+                                    </View>
+                                                );
+                                            }
+                                        })()}
+                                    </React.Fragment>
                                 ) : (
                                     <View style={{ height: 120, alignItems: 'center', justifyContent: 'center' }}>
                                         <Text style={{ color: Colors.text.tertiary, fontSize: Typography.fontSize.sm }}>

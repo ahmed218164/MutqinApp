@@ -27,6 +27,7 @@ import Animated, {
     useAnimatedStyle,
     withSpring,
     withTiming,
+    runOnJS,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { X, BookOpen, Download, ChevronDown } from 'lucide-react-native';
@@ -89,8 +90,10 @@ export default function TafseerBottomSheet({
             translateY.value = withSpring(0, { damping: 20, stiffness: 160 });
         } else {
             backdropOpacity.value = withTiming(0, { duration: 180 });
-            translateY.value = withSpring(SHEET_HEIGHT + 40, { damping: 20, stiffness: 160 }, () => {
-                setIsMounted(false);
+            translateY.value = withSpring(SHEET_HEIGHT + 40, { damping: 20, stiffness: 160 }, (finished) => {
+                if (finished) {
+                    runOnJS(setIsMounted)(false);
+                }
             });
         }
     }, [visible]);

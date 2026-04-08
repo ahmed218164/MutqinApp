@@ -29,7 +29,7 @@ let cacheReady = false;
  *
  * @param db  The expo-sqlite database instance (from useAyatDB / useSQLiteContext)
  */
-export function populatePageVerseCache(db: { getAllSync: Function }): void {
+export function populatePageVerseCache(db: { getAllSync: <T = unknown>(sql: string, params?: unknown[]) => T[] }): void {
     if (cacheReady) return;
     try {
         const rows = db.getAllSync<{ page: number; cnt: number }>(
@@ -59,7 +59,7 @@ export function getVersesForPage(pageNumber: number): number {
  * Use when you have the DB handle but haven't populated the full cache.
  */
 export async function getVersesForPageFromDB(
-    db: { getFirstSync: Function },
+    db: { getFirstSync: <T = unknown>(sql: string, params?: unknown[]) => T | undefined },
     pageNumber: number,
 ): Promise<number> {
     try {
