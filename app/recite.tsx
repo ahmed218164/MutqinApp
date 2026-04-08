@@ -202,7 +202,7 @@ function ReciteScreenInner() {
             // Signal all pending fetches to abort
             abortControllerRef.current.abort();
             // Stop any audio playback to release resources
-            try { audioEngine.destroy(); } catch {}
+            try { audioEngine.stop(); } catch {}
         };
     }, []);
 

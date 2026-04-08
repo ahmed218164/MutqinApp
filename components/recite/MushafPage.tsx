@@ -46,6 +46,7 @@ import {
 import { lightImpact, mediumImpact } from '../../lib/haptics';
 import { MushafPageProps } from './mushaf-page-types';
 import { MUSHAF_BG } from './mushaf-page-constants';
+import { Colors } from '../../constants/theme';
 import MushafHighlights from './MushafHighlights';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -677,7 +678,7 @@ export function getPageSource(page: number): any {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function MushafPage({
+function MushafPageInner({
 pageNumber,
     highlightedVerseKey,
     longPressedVerseKey,
@@ -837,7 +838,7 @@ pageNumber,
 
     // ── Night mode tint ───────────────────────────────────────────────────────
     const nightTint = nightMode
-        ? { backgroundColor: 'rgba(0,0,0,0.55)', ...StyleSheet.absoluteFillObject }
+        ? { backgroundColor: 'rgba(0,0,0,0.35)', ...StyleSheet.absoluteFillObject }
         : null;
 
     // ── Highlights → delegated to MushafHighlights component ─────────────────
@@ -849,7 +850,7 @@ pageNumber,
         // Page not in static require map — show placeholder
         return (
             <View style={[styles.root, { backgroundColor: MUSHAF_BG }]}>
-                <ActivityIndicator size="large" color="#b5a06c" />
+                <ActivityIndicator size="large" color={Colors.gold[500]} />
                 <Text style={styles.loadingText}>Page {pageNumber}</Text>
             </View>
         );
@@ -924,7 +925,20 @@ const styles = StyleSheet.create({
 
     loadingText: {
         marginTop: 12,
-        color: '#9b8866',
+        color: Colors.gold[400],
         fontSize: 14,
     },
+});
+
+// ── Memoize: prevents re-render of all 604 pages when only 1 changes ──────────
+export default React.memo(MushafPageInner, (prev, next) => {
+    return (
+        prev.pageNumber === next.pageNumber &&
+        prev.isActive === next.isActive &&
+        prev.nightMode === next.nightMode &&
+        prev.immersive === next.immersive &&
+        prev.highlightedVerseKey === next.highlightedVerseKey &&
+        prev.longPressedVerseKey === next.longPressedVerseKey &&
+        prev.heatmapData === next.heatmapData
+    );
 });

@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, Image, TextInput, TouchableOpacity, Keyboard } 
 import PagerView from 'react-native-pager-view';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withDelay } from 'react-native-reanimated';
 import MushafPage, { getPageSource } from './MushafPage';
-import { Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { Typography, Spacing, BorderRadius, Colors } from '../../constants/theme';
 import { SURAHS } from '../../constants/surahs';
 
 // ── Juz start pages (1-indexed, standard Mushaf) ──────────────────────────────
@@ -169,7 +169,7 @@ export default function MushafPager({
                         flashPageIndicator();
                     }
                 }}
-                offscreenPageLimit={4}
+                offscreenPageLimit={2}
                 // RTL = swipe right → next page, matching Arabic Mushaf reading direction
                 layoutDirection="rtl"
             >
@@ -223,7 +223,7 @@ export default function MushafPager({
                     <TextInput
                         style={styles.jumpInput}
                         placeholder="رقم الصفحة"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={Colors.neutral[400]}
                         keyboardType="number-pad"
                         value={jumpText}
                         onChangeText={setJumpText}
@@ -257,10 +257,10 @@ export default function MushafPager({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f4ec',
+        backgroundColor: '#fdf6e3',  // Mushaf paper — physical color, not theme
     },
     containerNight: {
-        backgroundColor: '#1a1a2e',
+        backgroundColor: Colors.neutral[950],
     },
     pager: {
         flex: 1,
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.full,
     },
     pageIndicatorText: {
-        color: '#fff',
+        color: Colors.text.inverse,
         fontSize: Typography.fontSize.xs,
         fontWeight: '600' as const,
         letterSpacing: 0.3,
@@ -324,21 +324,21 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     jumpInput: {
-        color: '#fff',
+        color: Colors.text.inverse,
         fontSize: 16,
         fontFamily: 'System',
         minWidth: 80,
         textAlign: 'center',
         paddingVertical: 4,
         borderBottomWidth: 1,
-        borderBottomColor: '#aaa',
+        borderBottomColor: Colors.neutral[400],
     },
     jumpButton: {
         paddingHorizontal: 8,
         paddingVertical: 4,
     },
     jumpButtonText: {
-        color: '#4ADE80',
+        color: Colors.emerald[400],
         fontSize: 20,
         fontWeight: '700',
     },

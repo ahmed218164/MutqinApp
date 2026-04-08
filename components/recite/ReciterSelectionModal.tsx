@@ -30,7 +30,10 @@ export default function ReciterSelectionModal({
     currentReciterId,
     qiraat = 'Hafs',
 }: ReciterSelectionModalProps) {
-    const reciters = qiraat ? getRecitersByQiraat(qiraat) : RECITERS_LIBRARY;
+    // Filter to ayah-by-ayah reciters only — the engine doesn't support
+    // gapless (surah-level) playback yet (requires timing DB + seekTo).
+    const reciters = (qiraat ? getRecitersByQiraat(qiraat) : RECITERS_LIBRARY)
+        .filter(r => r.audioType === 'ayah');
 
     function handleSelect(reciter: Reciter) {
         onSelect(reciter);

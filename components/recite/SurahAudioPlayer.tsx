@@ -66,7 +66,7 @@ export default function SurahAudioPlayer({
     React.useEffect(() => {
         audioEngine.setVerses(surahNumber, verses, reciter);
         audioEngine.play(0);
-        return () => { audioEngine.destroy(); };
+        return () => { audioEngine.stop(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

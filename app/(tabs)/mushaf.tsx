@@ -72,8 +72,8 @@ const ringStyles = StyleSheet.create({
     },
 });
 
-// ── Frosted-glass Surah Row ────────────────────────────────────────────────
-function SurahRow({ item, index, onPress }: { item: Surah; index: number; onPress: () => void }) {
+// ── Frosted-glass Surah Row ────────────────────────────────────────────────────
+const SurahRow = React.memo(function SurahRow({ item, index, onPress }: { item: Surah; index: number; onPress: () => void }) {
     const scaleVal = useSharedValue(1);
     const opacity = useSharedValue(0);
     const translateX = useSharedValue(-12);
@@ -142,7 +142,7 @@ function SurahRow({ item, index, onPress }: { item: Surah; index: number; onPres
             </TouchableOpacity>
         </Animated.View>
     );
-}
+});
 
 const rowStyles = StyleSheet.create({
     wrapper: {
@@ -397,6 +397,9 @@ export default function MushafScreen() {
                         contentContainerStyle={styles.listContent}
                         showsVerticalScrollIndicator={false}
                         initialNumToRender={14}
+                        maxToRenderPerBatch={10}
+                        windowSize={7}
+                        removeClippedSubviews={true}
                         onScroll={scrollHandler}
                         scrollEventThrottle={16}
                     />

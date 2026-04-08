@@ -28,7 +28,7 @@ import RecordingControls from './RecordingControls';
 import ReciterSelectionModal from './ReciterSelectionModal';
 import { Reciter, getDefaultReciter } from '../../lib/audio-reciters';
 import {
-    audioEngine, useAudioEngine, repeatLabel,
+    audioEngine, useAudioEngine, repeatLabel, configureAudioSession,
 } from '../../lib/audio-engine';
 import { getAyahAudioUrl } from '../../lib/quran-audio-api';
 
@@ -144,9 +144,24 @@ export default function UnifiedAudioControl({
         audioEngine.setLearningMode(learningMode && mode === 'listen');
     }, [learningMode, mode]);
 
+    // Track previous mode to detect record → listen transitions
+    const prevModeRef = React.useRef(mode);
+
     // Main mode-transition effect
     React.useEffect(() => {
+        const prevMode = prevModeRef.current;
+        prevModeRef.current = mode;
+
         if (mode === 'listen') {
+            // Restore audio session to playback mode (cross-platform).
+            // Critical after recording: the audio category was switched to
+            // allowsRecording=true, which on iOS routes output to earpiece.
+            if (prevMode === 'record') {
+                configureAudioSession(true).catch(err =>
+                    console.warn('[UnifiedAudio] session restore failed:', err)
+                );
+            }
+
             if (!engineInitialized.current) {
                 // First entry: configure and start from verse 0
                 audioEngine.configure(surahNumber, rangedVerses, selectedReciter);
@@ -227,7 +242,7 @@ export default function UnifiedAudioControl({
 
     React.useEffect(() => {
         return () => {
-            audioEngine.destroy();
+            audioEngine.stop();
             engineInitialized.current = false;
         };
     }, []);

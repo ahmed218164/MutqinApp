@@ -38,7 +38,8 @@ import {
     setAudioModeAsync,
     AudioPlayer,
 } from 'expo-audio';
-import { PLAYBACK_STATUS_UPDATE } from 'expo-audio/build/AudioEventKeys';
+// Event key for playback status updates (string literal avoids brittle internal import)
+const PLAYBACK_STATUS_UPDATE = 'playbackStatusUpdate';
 import * as React from 'react';
 import { getAyahAudioUrl, prefetchAyahAudio } from './quran-audio-api';
 import { ensureAudioLocal, warmCacheAsync } from './audio-cache';
@@ -48,8 +49,13 @@ import type { Reciter } from './audio-reciters';
 
 let audioModeConfigured = false;
 
-export async function configureAudioSession() {
-    if (audioModeConfigured) return;
+/**
+ * Configure the global audio session for playback.
+ * @param force  If true, reconfigure even if already configured.
+ *               Used to restore playback mode after recording mode.
+ */
+export async function configureAudioSession(force = false) {
+    if (audioModeConfigured && !force) return;
     audioModeConfigured = true;
     await setAudioModeAsync({
         playsInSilentMode: true,
@@ -191,6 +197,7 @@ class AudioEngineCore {
     // ── Configuration ─────────────────────────────────────────────────────────
 
     configure(surahNumber: number, verses: any[], reciter: Reciter) {
+        console.log(`[AudioEngine] configure: surah=${surahNumber}, verses=${verses.length}, reciter=${reciter.id}`);
         this.surahNumber  = surahNumber;
         this.verses       = verses;
         this.reciter      = reciter;
@@ -202,16 +209,25 @@ class AudioEngineCore {
 
     private async resolveUri(index: number): Promise<string | null> {
         const verse = this.verses[index];
-        if (!verse || !this.reciter) return null;
+        if (!verse || !this.reciter) {
+            console.warn(`[AudioEngine] resolveUri: no verse at index=${index} or no reciter`);
+            return null;
+        }
+        console.log(`[AudioEngine] resolveUri: surah=${this.surahNumber}, ayah=${verse.numberInSurah}, reciter=${this.reciter.id}`);
         const remoteUrl = await getAyahAudioUrl(
             this.surahNumber, verse.numberInSurah, this.reciter
         );
-        if (!remoteUrl) return null;
+        if (!remoteUrl) {
+            console.warn(`[AudioEngine] resolveUri: getAyahAudioUrl returned null`);
+            return null;
+        }
+        console.log(`[AudioEngine] resolveUri: remoteUrl=${remoteUrl.substring(0, 80)}...`);
         // Priority: local file:// (offline) → remote URL (with background download)
-        // Mirrors y3.n: check file exists → return local path OR trigger download
-        return ensureAudioLocal(
+        const localUri = await ensureAudioLocal(
             this.reciter.id, this.surahNumber, verse.numberInSurah, remoteUrl
         );
+        console.log(`[AudioEngine] resolveUri: finalUri=${localUri?.substring(0, 80)}...`);
+        return localUri;
     }
 
     // ── Deep pipeline pre-loading ─────────────────────────────────────────────
@@ -347,13 +363,23 @@ class AudioEngineCore {
     // ── Core play ─────────────────────────────────────────────────────────────
 
     async play(index: number, fromRepeat = false) {
+        console.log(`[AudioEngine] play(${index}): verses=${this.verses.length}, reciter=${this.reciter?.id}, fromRepeat=${fromRepeat}`);
+
         if (index >= this.verses.length) {
+            console.log(`[AudioEngine] play: index >= verses.length, stopping`);
             this._isPlaying = false;
             this.emit();
             return;
         }
         if (!fromRepeat) this._repeatCount = 0;
         this._didCompleteVerse = false;
+
+        // Ensure audio session is configured before playing
+        try {
+            await configureAudioSession();
+        } catch (e) {
+            console.warn('[AudioEngine] configureAudioSession failed:', e);
+        }
 
         // Cancel any pending delay timer
         if (this.delayTimer) {
@@ -363,6 +389,7 @@ class AudioEngineCore {
 
         // ── Fast path: use pre-loaded nextPlayer ──────────────────────────
         if (this.nextPlayer && this.nextPlayerIndex === index) {
+            console.log(`[AudioEngine] play: FAST PATH — using pre-loaded nextPlayer`);
             this.completionSub?.remove();
             this.completionSub = null;
             const oldPlayer = this.player;
@@ -395,6 +422,7 @@ class AudioEngineCore {
         }
 
         // ── Slow path: no pre-loaded player — resolve from scratch ────────
+        console.log(`[AudioEngine] play: SLOW PATH — resolving URI from scratch`);
         this._isLoading   = true;
         this._currentIndex = index;
         this.emit();
@@ -406,11 +434,15 @@ class AudioEngineCore {
             const uri = await this.resolveUri(index);
             if (!uri) throw new Error('No URI resolved');
 
+            console.log(`[AudioEngine] play: creating/replacing player with uri=${uri.substring(0, 80)}...`);
+
             if (!this.player) {
                 this.player = createAudioPlayer({ uri }, { updateInterval: 1000 });
+                console.log(`[AudioEngine] play: created NEW player`);
             } else {
                 this.player.pause();
                 this.player.replace({ uri });
+                console.log(`[AudioEngine] play: replaced source on EXISTING player`);
             }
 
             this.completionSub?.remove();
@@ -423,6 +455,7 @@ class AudioEngineCore {
             this._isPlaying  = true;
             this.emit();
 
+            console.log(`[AudioEngine] play: calling player.play()`);
             this.player.play();
 
             // Attach completion listener
@@ -543,13 +576,34 @@ class AudioEngineCore {
 
     // ── Cleanup ───────────────────────────────────────────────────────────────
 
-    destroy() {
+    /**
+     * stop() — Releases all native audio players and resets playback state,
+     * but PRESERVES listeners so React useSyncExternalStore subscriptions
+     * survive component unmount/remount cycles.
+     *
+     * Use this in component/screen cleanup effects.
+     */
+    stop() {
+        console.log(`[AudioEngine] stop() called — player=${!!this.player}, isPlaying=${this._isPlaying}`);
         this.completionSub?.remove();
-        this.player?.remove();
-        this.disposePipeline();
         this.completionSub = null;
-        this.player        = null;
-        this._isPlaying    = false;
+        if (this.player) {
+            try { this.player.remove(); } catch {}
+            this.player = null;
+        }
+        this.disposePipeline();
+        this._isPlaying = false;
+        this._isLoading = false;
+        this._didCompleteVerse = false;
+        this.emit(); // Notify React that playback stopped
+    }
+
+    /**
+     * destroy() — Full teardown including listeners.
+     * Only call this on app-level shutdown, NEVER from component cleanup.
+     */
+    destroy() {
+        this.stop();
         this.listeners.clear();
     }
 }
