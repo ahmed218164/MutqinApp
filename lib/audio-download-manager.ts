@@ -4,14 +4,14 @@
  * Bulk Offline Download Manager
  *
  * Mirrors QuranDownloadService.java:
- *   - Downloads full Surah ZIP files from elmushaf.com
+ *   - Downloads full Surah ZIP files from storage.elmushaf.com CDN
  *   - Unzips to {DocumentDirectory}/mushaf/{reciterId}/
  *   - Deletes ZIP after successful extraction
  *   - 3-retry logic with 15s back-off
  *   - Progress reporting via callbacks
  *   - Cancel support
  *
- * ZIP URL pattern: https://elmushaf.com/mushaf/audio/{elmushafPath}{SSS}.zip
+ * ZIP URL pattern: https://storage.elmushaf.com/sound_ayat/{reciterId}/{SSS}.zip
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -20,7 +20,7 @@ import { Reciter } from './audio-reciters';
 import { MUSHAF_ROOT, safeName, ensureReciterDir } from './audio-cache';
 import { downloadTimingDb, hasTimingDb } from './audio-timing-db';
 
-const ELMUSHAF_BASE = 'https://elmushaf.com';
+const STORAGE_CDN = 'https://storage.elmushaf.com';
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 15_000;
 
@@ -51,7 +51,9 @@ function surahKey(reciterId: string, surah: number): string {
 
 function zipUrl(reciter: Reciter, surah: number): string {
     const s = surah.toString().padStart(3, '0');
-    return `${ELMUSHAF_BASE}${reciter.elmushafPath}${s}.zip`;
+    // Use the CDN subdirectory based on audio type
+    const folder = reciter.audioType === 'gapless' ? 'sound_sura' : 'sound_ayat';
+    return `${STORAGE_CDN}/${folder}/${reciter.id}/${s}.zip`;
 }
 
 function tempZipPath(reciterId: string, surah: number): string {

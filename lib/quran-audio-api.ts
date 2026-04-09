@@ -1,27 +1,33 @@
 /**
  * quran-audio-api.ts
  *
- * Utility for fetching ayah audio URLs from quranapi.pages.dev.
+ * Audio URL resolution with DIRECT CDN access.
  *
- * Endpoint: GET https://quranapi.pages.dev/api/{surahNo}/{ayahNo}.json
+ * ┌──────────────────────────────────────────────────────────────────────┐
+ * │  CRITICAL: elmushaf.com/mushaf/audio/* returns 404 HTML pages.      │
+ * │  The reference app relies on a 301 redirect to a hidden CDN.       │
+ * │  We bypass the redirect and hit the CDN directly:                  │
+ * │                                                                    │
+ * │  Ayah-by-Ayah (Type 2):                                           │
+ * │    https://storage.elmushaf.com/sound_ayat/{reciter_id}/{SSS}{AAA}.mp3    │
+ * │                                                                    │
+ * │  Gapless Surah (Type 1):                                          │
+ * │    https://storage.elmushaf.com/sound_sura/{reciter_id}/{SSS}.mp3  │
+ * │                                                                    │
+ * │  Timing DB (for gapless verse tracking):                           │
+ * │    https://storage.elmushaf.com/sound_sura/{reciter_id}/{reciter_id}.db  │
+ * └──────────────────────────────────────────────────────────────────────┘
  *
- * Response shape (relevant part):
- * {
- *   "audio": {
- *     "1": { "reciter": "Mishary Rashid Al Afasy", "url": "...", "originalUrl": "..." },
- *     "4": { "reciter": "Yasser Al Dosari",        "url": "...", "originalUrl": "..." },
- *     ...
- *   }
- * }
- *
- * If the reciter has no apiId (legacy reciters), we fall back to constructing
- * the URL from baseUrl in the everyayah.com format.
+ * Fallback chain:
+ *   1. storage.elmushaf.com (CDN direct — 80+ reciters)
+ *   2. quranapi.pages.dev   (5 reciters, JSON API)
+ *   3. cdn.islamic.network  (legacy baseUrl pattern)
  */
 
 import { Reciter } from './audio-reciters';
 
-// ── elmushaf.com base URL ─────────────────────────────────────────────────────
-const ELMUSHAF_BASE = 'https://elmushaf.com';
+// ── CDN base URL (direct storage, no redirect) ──────────────────────────────
+const STORAGE_CDN = 'https://storage.elmushaf.com';
 
 interface QuranApiAudioEntry {
     reciter: string;
@@ -39,7 +45,7 @@ interface QuranApiResponse {
 const responseCache = new Map<string, QuranApiResponse>();
 
 /**
- * Fetches the audio URL for a given ayah from quranapi.pages.dev.
+ * Fetches the audio URL for a given ayah.
  *
  * @param surahNo - Surah number (1–114)
  * @param ayahNo  - Ayah number within the surah
@@ -51,9 +57,9 @@ export async function getAyahAudioUrl(
     ayahNo: number,
     reciter: Reciter
 ): Promise<string | null> {
-    // Priority 1: elmushaf.com (if reciter has elmushafPath)
+    // Priority 1: storage.elmushaf.com CDN (if reciter has elmushafPath)
     if (reciter.elmushafPath) {
-        return getElmushafAudioUrl(reciter.elmushafPath, reciter.audioType, surahNo, ayahNo);
+        return getStorageCdnUrl(reciter.id, reciter.audioType, surahNo, ayahNo);
     }
 
     // Priority 2: quranapi.pages.dev (if reciter has apiId)
@@ -109,6 +115,26 @@ export async function getAyahAudioUrl(
 }
 
 /**
+ * Get the URL for a full surah file (gapless).
+ * Used by the gapless engine to stream/download the single surah MP3.
+ */
+export function getGaplessSurahUrl(reciterId: string): string | null;
+export function getGaplessSurahUrl(reciterId: string, surahNo: number): string;
+export function getGaplessSurahUrl(reciterId: string, surahNo?: number): string | null {
+    if (surahNo === undefined) return null;
+    const s = surahNo.toString().padStart(3, '0');
+    return `${STORAGE_CDN}/sound_sura/${reciterId}/${s}.mp3`;
+}
+
+/**
+ * Get the URL for the timing database of a gapless reciter.
+ * The DB is a SQLite file with table `timings(sura, ayah, time)`.
+ */
+export function getTimingDbUrl(reciterId: string): string {
+    return `${STORAGE_CDN}/sound_sura/${reciterId}/${reciterId}.db`;
+}
+
+/**
  * Pre-warms the cache for a given ayah without returning the result.
  * Call this speculatively while the current ayah is playing.
  */
@@ -150,6 +176,38 @@ export function clearAyahAudioCache(): void {
     responseCache.clear();
 }
 
+// ── storage.elmushaf.com CDN URL builder ─────────────────────────────────────
+
+/**
+ * Constructs a DIRECT CDN URL for storage.elmushaf.com.
+ *
+ * From reverse-engineering the reference app's redirect chain:
+ *   - Ayah (type=2, _ayat):   {CDN}/sound_ayat/{reciter_id}/{SSSAAA}.mp3
+ *   - Gapless (type=1, _sura): {CDN}/sound_sura/{reciter_id}/{SSS}.mp3
+ *
+ * @param reciterId  The reciter enum name (e.g. "efassy_ayat", "mishari_alafasy_sura")
+ * @param audioType  'gapless' or 'ayah'
+ * @param surahNo    Surah number 1-114
+ * @param ayahNo     Ayah number (only used for ayah-by-ayah)
+ */
+export function getStorageCdnUrl(
+    reciterId: string,
+    audioType: 'gapless' | 'ayah',
+    surahNo: number,
+    ayahNo: number,
+): string {
+    const s = surahNo.toString().padStart(3, '0');
+
+    if (audioType === 'gapless') {
+        // Surah-level file: sound_sura/{reciter_id}/001.mp3
+        return `${STORAGE_CDN}/sound_sura/${reciterId}/${s}.mp3`;
+    } else {
+        // Per-verse file: sound_ayat/{reciter_id}/001002.mp3
+        const a = ayahNo.toString().padStart(3, '0');
+        return `${STORAGE_CDN}/sound_ayat/${reciterId}/${s}${a}.mp3`;
+    }
+}
+
 // ── Legacy fallback ────────────────────────────────────────────────────────────
 
 /**
@@ -160,35 +218,4 @@ function getLegacyAudioUrl(surahNo: number, ayahNo: number, baseUrl: string): st
     const s = surahNo.toString().padStart(3, '0');
     const v = ayahNo.toString().padStart(3, '0');
     return `${baseUrl}/${s}${v}.mp3`;
-}
-
-// ── elmushaf.com URL builder ──────────────────────────────────────────────────
-
-/**
- * Constructs a URL for elmushaf.com audio.
- *
- * From h3.java enum:
- *   - Gapless (type=1, _sura): {ELMUSHAF_BASE}{elmushafPath}{SSS}.mp3
- *     e.g. https://elmushaf.com/mushaf/audio/mishari_alafasy_sura/001.mp3
- *   - Ayah (type=2, _ayat):   {ELMUSHAF_BASE}{elmushafPath}{SSSAAA}.mp3
- *     e.g. https://elmushaf.com/mushaf/audio/efassy_ayat/001002.mp3
- *
- * From y3.n.b(int sura, int aya): generates the 6-digit filename.
- */
-export function getElmushafAudioUrl(
-    elmushafPath: string,
-    audioType: 'gapless' | 'ayah',
-    surahNo: number,
-    ayahNo: number,
-): string {
-    const s = surahNo.toString().padStart(3, '0');
-
-    if (audioType === 'gapless') {
-        // Surah-level file: 001.mp3
-        return `${ELMUSHAF_BASE}${elmushafPath}${s}.mp3`;
-    } else {
-        // Per-verse file: 001002.mp3 (mirrors y3.n.b())
-        const a = ayahNo.toString().padStart(3, '0');
-        return `${ELMUSHAF_BASE}${elmushafPath}${s}${a}.mp3`;
-    }
 }

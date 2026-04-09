@@ -333,9 +333,24 @@ export default function UnifiedAudioControl({
                             <View style={styles.listenContainer}>
                                 {/* Verse info */}
                                 <View style={styles.infoContainer}>
-                                    <Text style={styles.verseText}>
-                                        آية {engineState.currentIndex + 1} من {rangedVerses.length}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={styles.verseText}>
+                                            آية {engineState.currentIndex + 1} من {rangedVerses.length}
+                                        </Text>
+                                        {engineState.isGaplessMode && (
+                                            <Text style={{
+                                                fontSize: 10,
+                                                fontWeight: '700' as const,
+                                                color: Colors.gold[400],
+                                                backgroundColor: Colors.gold[400] + '18',
+                                                paddingHorizontal: 5,
+                                                paddingVertical: 1,
+                                                borderRadius: 4,
+                                            }}>
+                                                Gapless ∞
+                                            </Text>
+                                        )}
+                                    </View>
                                     <Text
                                         style={[styles.reciterText, { color: accentColor }]}
                                         numberOfLines={1}

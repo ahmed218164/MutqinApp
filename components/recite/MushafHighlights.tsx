@@ -85,7 +85,7 @@ function renderHighlightBoxes(
     });
 }
 
-export default function MushafHighlights({
+function MushafHighlightsInner({
     pageCoords,
     imgWidth,
     imgHeight,
@@ -134,3 +134,15 @@ export default function MushafHighlights({
     // correctly within the image coordinate space (Bug 3 fix).
     return <View style={StyleSheet.absoluteFillObject} pointerEvents="none">{nodes}</View>;
 }
+
+// ── Memoized export: prevents re-render unless highlights actually change ─────
+export default React.memo(MushafHighlightsInner, (prev, next) => {
+    return (
+        prev.highlightedVerseKey === next.highlightedVerseKey &&
+        prev.longPressedVerseKey === next.longPressedVerseKey &&
+        prev.imgWidth === next.imgWidth &&
+        prev.imgHeight === next.imgHeight &&
+        prev.pageCoords === next.pageCoords &&
+        prev.heatmapData === next.heatmapData
+    );
+});

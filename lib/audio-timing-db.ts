@@ -26,8 +26,7 @@ import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Reciter } from './audio-reciters';
 import { MUSHAF_ROOT, safeName, timingDbLocalPath, ensureReciterDir } from './audio-cache';
-
-const ELMUSHAF_BASE = 'https://elmushaf.com';
+import { getTimingDbUrl } from './quran-audio-api';
 
 // ── In-memory timing cache {reciterId→surah→ayah→ms} ─────────────────────────
 // Mirrors AudioService's SparseIntArray H — loaded once per surah change
@@ -68,7 +67,7 @@ export async function downloadTimingDb(
     }
 
     const destPath = timingDbLocalPath(reciter.id);
-    const url = `${ELMUSHAF_BASE}${reciter.elmushafPath}${safeName(reciter.id)}.db`;
+    const url = getTimingDbUrl(reciter.id);
 
     await ensureReciterDir(reciter.id);
 

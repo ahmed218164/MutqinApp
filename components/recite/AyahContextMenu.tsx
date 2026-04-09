@@ -14,6 +14,7 @@ import {
     Alert,
     Share,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -27,6 +28,7 @@ import {
     BookOpen,
     Link2,
     Copy,
+    Share2,
     X,
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
@@ -50,7 +52,7 @@ export interface AyahContextMenuProps {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SHEET_HEIGHT = 290;
+const SHEET_HEIGHT = 345;
 
 const SPRING_CONFIG = {
     damping: 20,
@@ -175,7 +177,21 @@ export default function AyahContextMenu({
         const textToCopy = ayahText ?? `${surahNum}:${ayahNum}`;
         onClose();
         try {
-            await Share.share({ message: textToCopy });
+            await Clipboard.setStringAsync(textToCopy);
+            Alert.alert('تم النسخ ✅', 'تم نسخ نص الآية');
+        } catch {
+            // Clipboard write failed — fall back silently
+        }
+    };
+
+    const handleShare = async () => {
+        lightImpact();
+        const textToShare = ayahText
+            ? `﴿${ayahText}﴾\n— سورة ${surahNum} : ${ayahNum}`
+            : `${surahNum}:${ayahNum}`;
+        onClose();
+        try {
+            await Share.share({ message: textToShare });
         } catch {
             // User dismissed share sheet — no-op
         }
@@ -235,6 +251,13 @@ export default function AyahContextMenu({
                         label="Copy Text"
                         tint={Colors.text.secondary}
                         onPress={handleCopy}
+                    />
+                    <MenuRow
+                        icon={<Share2 size={18} color={Colors.gold[300]} />}
+                        labelAr="مشاركة الآية"
+                        label="Share Ayah"
+                        tint={Colors.gold[300]}
+                        onPress={handleShare}
                         last
                     />
                 </View>

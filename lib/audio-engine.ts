@@ -1,35 +1,25 @@
 /**
  * lib/audio-engine.ts
  *
- * Phase D — Reference-Grade Gapless Audio Engine (expo-audio)
+ * Phase E — Dual-Mode Audio Engine (Ayah-by-Ayah + Gapless)
  *
  * ┌─────────────────────────────────────────────────────────────────────────┐
- * │  REFERENCE APP ANALYSIS (to_take_in_review/AudioService.java)         │
- * │                                                                       │
- * │  The reference uses SURAH-LEVEL MP3 files + a timing DB:              │
- * │    - Single file per surah (001.mp3 = all of Al-Fatiha)               │
- * │    - SQLite DB maps (surah, ayah) → ms offset within the file         │
- * │    - Verse navigation = seekTo(offset), NO file switching             │
- * │    - Result: TRUE zero-gap (same audio stream, just seeking)           │
- * │                                                                       │
- * │  Our audio sources (cdn.islamic.network) serve PER-VERSE files.       │
- * │  We CAN'T use surah-level files. Instead, we replicate the result:    │
- * │                                                                       │
- * │  DEEP PIPELINE — 3-level pre-loading:                                 │
- * │                                                                       │
- * │  Level 1: nextPlayer (AudioPlayer for N+1 — decoded, ready to play)   │
- * │  Level 2: warmPlayer (AudioPlayer for N+2 — decoded, ready to queue)  │
- * │  Level 3: disk cache  (MP3 for N+3 downloaded to filesystem)          │
- * │  Level 4: API prefetch (JSON metadata for N+4 cached in memory)       │
- * │                                                                       │
- * │  When verse N finishes:                                               │
- * │    → nextPlayer.play()     [0ms — native buffer already decoded]      │
- * │    → warmPlayer → next     [promote pipeline]                         │
- * │    → Start pre-loading N+3 [refill pipeline]                          │
- * │                                                                       │
- * │  EXTRA: per-ayah delay (from reference `delayBetweenAyatButton`)      │
- * │    audioEngine.setAyahDelay(seconds)                                  │
- * │    Pauses between verses for the configured duration.                  │
+ * │  TWO PLAYBACK MODES:                                                   │
+ * │                                                                        │
+ * │  MODE 1: AYAH-BY-AYAH (audioType='ayah')                              │
+ * │    - Per-verse MP3 files from storage.elmushaf.com/sound_ayat/         │
+ * │    - 3-level pre-loading pipeline (unchanged from Phase D)             │
+ * │    - Auto-advance with optional ayah delay                             │
+ * │                                                                        │
+ * │  MODE 2: GAPLESS (audioType='gapless')                                │
+ * │    - Single surah MP3 from storage.elmushaf.com/sound_sura/            │
+ * │    - Timing DB provides per-verse ms offsets                           │
+ * │    - seekTo() for verse navigation (zero-gap playback)                 │
+ * │    - Position polling for live verse highlight tracking                 │
+ * │    - One download per session per surah                                │
+ * │                                                                        │
+ * │  Both modes emit the same state shape to consumers,                    │
+ * │  so MushafHighlights works identically regardless of mode.             │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -41,8 +31,9 @@ import {
 // Event key for playback status updates (string literal avoids brittle internal import)
 const PLAYBACK_STATUS_UPDATE = 'playbackStatusUpdate';
 import * as React from 'react';
-import { getAyahAudioUrl, prefetchAyahAudio } from './quran-audio-api';
-import { ensureAudioLocal, warmCacheAsync } from './audio-cache';
+import { getAyahAudioUrl, prefetchAyahAudio, getGaplessSurahUrl } from './quran-audio-api';
+import { ensureAudioLocal, ensureGaplessSurahLocal, warmCacheAsync } from './audio-cache';
+import { getVerseTimings, getVerseAtPosition, getVerseOffset, SurahTimings } from './gapless-timing';
 import type { Reciter } from './audio-reciters';
 
 // ── Audio session setup ───────────────────────────────────────────────────────
@@ -76,6 +67,8 @@ export interface AudioEngineState {
     ayahDelay: number;
     /** True when the verse just ended naturally (not a user pause). Reset on next play(). */
     didCompleteVerse: boolean;
+    /** True when engine is using gapless surah-level playback */
+    isGaplessMode: boolean;
 }
 
 export type RepeatMode = 1 | 2 | 3 | 'inf';
@@ -87,10 +80,7 @@ export function repeatLabel(m: RepeatMode): string {
 // ── Singleton engine class ────────────────────────────────────────────────────
 
 class AudioEngineCore {
-    // ── Deep pipeline architecture ────────────────────────────────────────────
-    // player     = currently playing verse (Level 0 — active)
-    // nextPlayer = pre-loaded verse N+1    (Level 1 — decoded, ready)
-    // warmPlayer = pre-loaded verse N+2    (Level 2 — decoded, queued)
+    // ── Deep pipeline architecture (ayah-by-ayah mode) ────────────────────────
     private player: AudioPlayer | null = null;
 
     // Level 1: immediately playable
@@ -118,6 +108,12 @@ class AudioEngineCore {
     private _learningMode = false;
     private _didCompleteVerse = false;
 
+    // ── Gapless mode state ────────────────────────────────────────────────────
+    private _isGaplessMode = false;
+    private gaplessTimings: SurahTimings | null = null;
+    private gaplessPositionInterval: ReturnType<typeof setInterval> | null = null;
+    private gaplessLastAyah = -1;
+
     // Timers
     private completionSub: { remove: () => void } | null = null;
     private delayTimer: ReturnType<typeof setTimeout> | null = null;
@@ -141,6 +137,7 @@ class AudioEngineCore {
         playbackSpeed:    1.0,
         ayahDelay:        0,
         didCompleteVerse: false,
+        isGaplessMode:    false,
     };
 
     getSnapshot(): AudioEngineState {
@@ -152,7 +149,8 @@ class AudioEngineCore {
             s.repeatMode       === this._repeatMode       &&
             s.playbackSpeed    === this._playbackSpeed    &&
             s.ayahDelay        === this._ayahDelay        &&
-            s.didCompleteVerse === this._didCompleteVerse
+            s.didCompleteVerse === this._didCompleteVerse  &&
+            s.isGaplessMode    === this._isGaplessMode
         ) {
             return s;
         }
@@ -164,6 +162,7 @@ class AudioEngineCore {
             playbackSpeed:    this._playbackSpeed,
             ayahDelay:        this._ayahDelay,
             didCompleteVerse: this._didCompleteVerse,
+            isGaplessMode:    this._isGaplessMode,
         };
         return this._snapshot;
     }
@@ -197,15 +196,18 @@ class AudioEngineCore {
     // ── Configuration ─────────────────────────────────────────────────────────
 
     configure(surahNumber: number, verses: any[], reciter: Reciter) {
-        console.log(`[AudioEngine] configure: surah=${surahNumber}, verses=${verses.length}, reciter=${reciter.id}`);
+        console.log(`[AudioEngine] configure: surah=${surahNumber}, verses=${verses.length}, reciter=${reciter.id}, type=${reciter.audioType}`);
         this.surahNumber  = surahNumber;
         this.verses       = verses;
         this.reciter      = reciter;
+        this._isGaplessMode = reciter.audioType === 'gapless';
         // Invalidate entire pipeline (verses/reciter changed)
         this.disposePipeline();
+        this.gaplessTimings = null;
+        this.gaplessLastAyah = -1;
     }
 
-    // ── URI resolution ────────────────────────────────────────────────────────
+    // ── URI resolution (ayah-by-ayah mode) ────────────────────────────────────
 
     private async resolveUri(index: number): Promise<string | null> {
         const verse = this.verses[index];
@@ -230,15 +232,12 @@ class AudioEngineCore {
         return localUri;
     }
 
-    // ── Deep pipeline pre-loading ─────────────────────────────────────────────
-    //
-    // Fills the pipeline up to 3 levels deep:
-    //   Level 1 (nextPlayer):  Resolve URI + create native AudioPlayer
-    //   Level 2 (warmPlayer):  Resolve URI + create native AudioPlayer
-    //   Level 3 (disk cache):  Download MP3 to filesystem
-    //   Level 4 (API cache):   Prefetch API JSON response
+    // ── Deep pipeline pre-loading (ayah-by-ayah mode only) ────────────────────
 
     private fillPipeline(fromIndex: number) {
+        // Skip pipeline in gapless mode — single file handles everything
+        if (this._isGaplessMode) return;
+
         const n1 = fromIndex;      // Level 1
         const n2 = fromIndex + 1;  // Level 2
         const n3 = fromIndex + 2;  // Level 3 — disk cache
@@ -354,16 +353,197 @@ class AudioEngineCore {
         this.disposeNextPlayer();
         this.disposeWarmPlayer();
         this.preloadInFlight.clear();
+        this.stopGaplessPolling();
         if (this.delayTimer) {
             clearTimeout(this.delayTimer);
             this.delayTimer = null;
         }
     }
 
-    // ── Core play ─────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ██  GAPLESS MODE — Single surah MP3 + timing DB seek                  ██
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Start gapless playback of a full surah.
+     * Downloads timing DB + surah MP3, then plays with position tracking.
+     */
+    private async playGapless(index: number) {
+        if (!this.reciter) return;
+
+        this._isLoading = true;
+        this._currentIndex = index;
+        this.emit();
+
+        try {
+            // Step 1: Load timing data in parallel with surah audio
+            const reciterId = this.reciter.id;
+            const surahNo = this.surahNumber;
+
+            const [timings, surahUri] = await Promise.all([
+                getVerseTimings(reciterId, surahNo),
+                this.resolveGaplessSurahUri(),
+            ]);
+
+            this.gaplessTimings = timings;
+
+            if (!surahUri) {
+                throw new Error(`No surah URI resolved for ${reciterId}:${surahNo}`);
+            }
+
+            console.log(
+                `[AudioEngine] Gapless: surahUri=${surahUri.substring(0, 80)}, ` +
+                `timings=${timings ? timings.verses.length + ' verses' : 'NONE'}`
+            );
+
+            // Step 2: Create or replace the player with the full surah MP3
+            if (!this.player) {
+                this.player = createAudioPlayer({ uri: surahUri }, { updateInterval: 250 });
+                console.log(`[AudioEngine] Gapless: created NEW player`);
+            } else {
+                this.player.pause();
+                this.player.replace({ uri: surahUri });
+                console.log(`[AudioEngine] Gapless: replaced source on EXISTING player`);
+            }
+
+            this.completionSub?.remove();
+            this.completionSub = null;
+
+            this.player.setPlaybackRate(this._playbackSpeed);
+            this.player.loop = false;
+
+            // Step 3: If a specific verse was requested, seek to its offset
+            if (timings && index > 0) {
+                const verse = this.verses[index];
+                if (verse) {
+                    const offsetMs = getVerseOffset(timings, verse.numberInSurah);
+                    if (offsetMs > 0) {
+                        this.player.seekTo(offsetMs / 1000); // expo-audio uses seconds
+                        console.log(`[AudioEngine] Gapless: seekTo(${offsetMs}ms) for ayah ${verse.numberInSurah}`);
+                    }
+                }
+            }
+
+            this._isLoading = false;
+            this._isPlaying = true;
+            this.emit();
+
+            this.player.play();
+
+            // Step 4: Attach completion listener (end of surah)
+            this.attachGaplessCompletionListener();
+
+            // Step 5: Start position polling for live verse tracking
+            this.startGaplessPolling();
+
+        } catch (err) {
+            console.error('[AudioEngine] Gapless play error:', err);
+            this._isLoading = false;
+            this._isPlaying = false;
+            this.emit();
+        }
+    }
+
+    /** Resolve the full surah MP3 URI (download or stream) */
+    private async resolveGaplessSurahUri(): Promise<string | null> {
+        if (!this.reciter) return null;
+        const remoteUrl = getGaplessSurahUrl(this.reciter.id, this.surahNumber);
+        if (!remoteUrl) return null;
+
+        console.log(`[AudioEngine] Gapless: resolving surah URI: ${remoteUrl}`);
+        const localUri = await ensureGaplessSurahLocal(
+            this.reciter.id, this.surahNumber, remoteUrl
+        );
+        return localUri;
+    }
+
+    /** Gapless completion — end of surah file */
+    private attachGaplessCompletionListener() {
+        this.completionSub?.remove();
+        this.completionSub = null;
+        if (!this.player) return;
+
+        this.completionSub = this.player.addListener(
+            PLAYBACK_STATUS_UPDATE,
+            (status: any) => {
+                if (status.didJustFinish) {
+                    this.completionSub?.remove();
+                    this.completionSub = null;
+                    this.stopGaplessPolling();
+                    // Surah complete
+                    this._didCompleteVerse = true;
+                    this._isPlaying = false;
+                    this.emit();
+                }
+            }
+        );
+    }
+
+    /**
+     * Position polling for gapless mode.
+     * Every 200ms, checks the current playback position against the timing DB
+     * and updates currentIndex if the verse has changed.
+     *
+     * Mirrors AudioService.java's `J.sendEmptyMessageDelayed(0, 150)` loop.
+     */
+    private startGaplessPolling() {
+        this.stopGaplessPolling();
+        if (!this.gaplessTimings) return;
+
+        this.gaplessPositionInterval = setInterval(() => {
+            if (!this.player || !this._isPlaying || !this.gaplessTimings) return;
+
+            const positionSeconds = this.player.currentTime;   // expo-audio: seconds
+            const positionMs = Math.round(positionSeconds * 1000);
+            const currentAyah = getVerseAtPosition(this.gaplessTimings, positionMs);
+
+            if (currentAyah !== this.gaplessLastAyah && currentAyah > 0) {
+                this.gaplessLastAyah = currentAyah;
+                // Find the verse index that matches this ayah number
+                const newIndex = this.verses.findIndex(
+                    (v: any) => v.numberInSurah === currentAyah
+                );
+                if (newIndex >= 0 && newIndex !== this._currentIndex) {
+                    this._currentIndex = newIndex;
+                    this.emit();
+                }
+            }
+        }, 200); // 200ms polling — smooth enough for highlight sync
+    }
+
+    private stopGaplessPolling() {
+        if (this.gaplessPositionInterval) {
+            clearInterval(this.gaplessPositionInterval);
+            this.gaplessPositionInterval = null;
+        }
+    }
+
+    /**
+     * Seek to a specific verse within the gapless surah file.
+     * Called when user taps an ayah on the Mushaf during gapless playback.
+     */
+    seekToVerse(index: number) {
+        if (!this._isGaplessMode || !this.player || !this.gaplessTimings) return;
+        
+        const verse = this.verses[index];
+        if (!verse) return;
+
+        const offsetMs = getVerseOffset(this.gaplessTimings, verse.numberInSurah);
+        if (offsetMs >= 0) {
+            this.player.seekTo(offsetMs / 1000); // expo-audio: seconds
+            this._currentIndex = index;
+            this.gaplessLastAyah = verse.numberInSurah;
+            this.emit();
+            console.log(`[AudioEngine] seekToVerse: ayah=${verse.numberInSurah}, offset=${offsetMs}ms`);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ██  CORE PLAY — Routes to gapless or ayah-by-ayah mode               ██
+    // ══════════════════════════════════════════════════════════════════════════
 
     async play(index: number, fromRepeat = false) {
-        console.log(`[AudioEngine] play(${index}): verses=${this.verses.length}, reciter=${this.reciter?.id}, fromRepeat=${fromRepeat}`);
+        console.log(`[AudioEngine] play(${index}): verses=${this.verses.length}, reciter=${this.reciter?.id}, gapless=${this._isGaplessMode}, fromRepeat=${fromRepeat}`);
 
         if (index >= this.verses.length) {
             console.log(`[AudioEngine] play: index >= verses.length, stopping`);
@@ -386,6 +566,22 @@ class AudioEngineCore {
             clearTimeout(this.delayTimer);
             this.delayTimer = null;
         }
+
+        // ── Route to gapless mode if applicable ───────────────────────────
+        if (this._isGaplessMode) {
+            // In gapless mode: if player is already loaded with this surah,
+            // just seek to the requested verse instead of reloading
+            if (this.player && this._isPlaying && this.gaplessTimings) {
+                this.seekToVerse(index);
+                return;
+            }
+            await this.playGapless(index);
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ██  AYAH-BY-AYAH MODE — Per-verse files with pipeline           ██
+        // ══════════════════════════════════════════════════════════════════
 
         // ── Fast path: use pre-loaded nextPlayer ──────────────────────────
         if (this.nextPlayer && this.nextPlayerIndex === index) {
@@ -472,7 +668,7 @@ class AudioEngineCore {
         }
     }
 
-    /** Attach didJustFinish listener to the current player */
+    /** Attach didJustFinish listener to the current player (ayah-by-ayah mode) */
     private attachCompletionListener(index: number) {
         this.completionSub?.remove();
         this.completionSub = null;
@@ -535,21 +731,35 @@ class AudioEngineCore {
         if (this._isPlaying) {
             this.player.pause();
             this._isPlaying = false;
+            this.stopGaplessPolling();
         } else {
             this.player.play();
             this._isPlaying = true;
+            if (this._isGaplessMode) this.startGaplessPolling();
         }
         this.emit();
     }
 
     skipNext() {
-        if (this._currentIndex < this.verses.length - 1) {
+        if (this._isGaplessMode && this.player && this.gaplessTimings) {
+            // In gapless mode: seek to next verse
+            const nextIndex = this._currentIndex + 1;
+            if (nextIndex < this.verses.length) {
+                this.seekToVerse(nextIndex);
+            }
+        } else if (this._currentIndex < this.verses.length - 1) {
             this.play(this._currentIndex + 1);
         }
     }
 
     skipPrev() {
-        if (this._currentIndex > 0) {
+        if (this._isGaplessMode && this.player && this.gaplessTimings) {
+            // In gapless mode: seek to previous verse
+            const prevIndex = this._currentIndex - 1;
+            if (prevIndex >= 0) {
+                this.seekToVerse(prevIndex);
+            }
+        } else if (this._currentIndex > 0) {
             this.disposePipeline();
             this.play(this._currentIndex - 1);
         }
@@ -595,6 +805,8 @@ class AudioEngineCore {
         this._isPlaying = false;
         this._isLoading = false;
         this._didCompleteVerse = false;
+        this.gaplessTimings = null;
+        this.gaplessLastAyah = -1;
         this.emit(); // Notify React that playback stopped
     }
 
