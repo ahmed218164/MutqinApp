@@ -18,7 +18,13 @@ import { offlineQueue } from '../lib/offline-queue';
 import { AyatSQLiteProvider } from '../lib/SQLiteProvider';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { configureAudioSession } from '../lib/audio-engine';
+import TrackPlayer from 'react-native-track-player';
+import { PlaybackService } from '../lib/playback-service';
+
+// Register the RNTP background service.
+// Must be called at module level (before any component renders).
+// Safe to call multiple times — RNTP is idempotent here.
+TrackPlayer.registerPlaybackService(() => PlaybackService);
 
 // Keep the splash screen visible while fonts are loading
 SplashScreen.preventAutoHideAsync();
@@ -74,17 +80,9 @@ export default function RootLayout() {
         }
     }, [fontsLoaded, fontError]);
 
-    // Configure audio session with proper error handling
-    const [audioReady, setAudioReady] = React.useState(false);
-    React.useEffect(() => {
-        configureAudioSession()
-            .then(() => setAudioReady(true))
-            .catch((err) => {
-                console.error('[Audio] Session config failed:', err);
-                // Proceed anyway — audio features will degrade gracefully
-                setAudioReady(true);
-            });
-    }, []);
+    // TrackPlayer is initialized inside the audio engine's setup() call.
+    // No separate audio session configuration needed — RNTP handles it
+    // natively via ExoPlayer (Android) and AVQueuePlayer (iOS).
 
     // Don't render until fonts are ready (or failed)
     if (!fontsLoaded && !fontError) {

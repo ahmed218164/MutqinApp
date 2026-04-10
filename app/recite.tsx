@@ -14,8 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { setAudioModeAsync } from 'expo-audio';
-import { audioEngine } from '../lib/audio-engine';
+import { audioEngine, configureAudioSession } from '../lib/audio-engine';
 import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark, Plus, Minus, Moon, Sun } from 'lucide-react-native';
 import { Colors as StaticColors, Typography, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
@@ -476,14 +475,9 @@ function ReciteScreenInner() {
             setAnalyzing(false);
             setUploadStep('idle');
 
-            // Restore expo-audio session after recording
+            // Restore playback session after recording (RNTP handles audio config)
             try {
-                await setAudioModeAsync({
-                    playsInSilentMode: true,
-                    shouldPlayInBackground: true,
-                    interruptionMode: 'doNotMix',
-                    allowsRecording: false,
-                });
+                await configureAudioSession(true);
             } catch (sessionErr) {
                 console.warn('[Audio] Session restore warning:', sessionErr);
             }
