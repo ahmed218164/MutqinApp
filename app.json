@@ -48,7 +48,6 @@
       "expo-sqlite",
       "expo-font",
       "expo-audio",
-      "react-native-track-player",
       [
         "expo-av",
         {
