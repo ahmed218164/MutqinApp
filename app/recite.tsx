@@ -7,10 +7,8 @@ import {
     Modal,
     ActivityIndicator,
     Alert,
-    ScrollView,
     KeyboardAvoidingView,
     Platform,
-    Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -42,7 +40,6 @@ import AyahContextMenu from '../components/recite/AyahContextMenu';
 import BookmarkHandle from '../components/recite/BookmarkHandle';
 import HifzCover from '../components/recite/HifzCover';
 import TafseerBottomSheet from '../components/mushaf/TafseerBottomSheet';
-import { fetchTafseer, TafseerEntry } from '../lib/tafseer-data';
 import { fetchSurahHeatmap, HeatmapData } from '../lib/heatmap-data';
 import { useAyatDB } from '../lib/SQLiteProvider';
 import Animated, {
@@ -52,6 +49,64 @@ import Animated, {
 } from 'react-native-reanimated';
 
 // Minimum recording duration handled by useVADRecorder (MIN_CHUNK_DURATION_MS = 2000ms)
+
+// ── Supabase Mutation Retry Helper ───────────────────────────────────────────
+type SupabaseMutationFn<T> = () => Promise<{ data: T | null; error: any }>;
+
+interface RetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  onRetry?: (attempt: number, error: any) => void;
+}
+
+const isRetryableError = (error: any): boolean => {
+  if (!error) return false;
+  const status = error.status ?? error.statusCode;
+  if (status === 429) return true;
+  if (status === 503) return true;
+  if (status >= 500 && status < 600) return true;
+  const message = error.message?.toLowerCase() ?? '';
+  if (message.includes('network') || message.includes('timeout') || message.includes('fetch')) return true;
+  if (message.includes('temporary') || message.includes('try again')) return true;
+  return false;
+};
+
+async function saveWithRetry<T>(
+  mutationFn: SupabaseMutationFn<T>,
+  options: RetryOptions = {}
+): Promise<{ data: T | null; error: any; success: boolean }> {
+  const { maxRetries = 3, baseDelayMs = 1000, onRetry } = options;
+
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await mutationFn();
+      if (result.error) {
+        lastError = result.error;
+        if (!isRetryableError(lastError) || attempt === maxRetries) {
+          return { data: result.data, error: lastError, success: false };
+        }
+        onRetry?.(attempt, lastError);
+      } else {
+        return { data: result.data, error: null, success: true };
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (!isRetryableError(lastError) || attempt === maxRetries) {
+        return { data: null, error: lastError, success: false };
+      }
+      onRetry?.(attempt, lastError);
+    }
+
+    if (attempt < maxRetries) {
+      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise(resolve => setTimeout(() => resolve(undefined), delay));
+    }
+  }
+
+  return { data: null, error: lastError, success: false };
+}
 
 interface Ayah {
     number: number;
@@ -150,8 +205,7 @@ function ReciteScreenInner() {
 
     // Tafseer Bottom Sheet State (Feature I)
     const [tafseerVisible, setTafseerVisible] = React.useState(false);
-    const [tafseerData, setTafseerData] = React.useState<TafseerEntry | null>(null);
-    const [tafseerLoading, setTafseerLoading] = React.useState(false);
+    const [tafseerTarget, setTafseerTarget] = React.useState<{ surah: number; ayah: number } | null>(null);
 
     // Immersive Reanimated values (UI-thread, 60fps)
     const headerTranslateY = useSharedValue(0);
@@ -177,21 +231,14 @@ function ReciteScreenInner() {
     }));
 
     // ── Feature I: Tafseer handler ────────────────────────────────────────────
-    const handleTafseerRequest = React.useCallback(async (verseKey: string) => {
+    // TafseerBottomSheet fetches its own data internally; we only need to pass
+    // the verse coordinates and make the sheet visible.
+    const handleTafseerRequest = React.useCallback((verseKey: string) => {
         const [surahStr, ayahStr] = verseKey.split(':');
-        const surahNum = parseInt(surahStr);
-        const ayahNum = parseInt(ayahStr);
+        const surahNum = parseInt(surahStr, 10);
+        const ayahNum = parseInt(ayahStr, 10);
+        setTafseerTarget({ surah: surahNum, ayah: ayahNum });
         setTafseerVisible(true);
-        setTafseerLoading(true);
-        setTafseerData(null);
-        try {
-            const entry = await fetchTafseer(surahNum, ayahNum);
-            setTafseerData(entry);
-        } catch {
-            setTafseerData(null);
-        } finally {
-            setTafseerLoading(false);
-        }
     }, []);
 
     // ── Cleanup on unmount: stop audio engine + cancel pending API calls ────
@@ -253,14 +300,18 @@ function ReciteScreenInner() {
     }, [user, surahNumber]);
 
     // Initialize range when verses are loaded
+    // Destructure param strings once so the effect dependency is a stable string, not the
+    // whole params object reference (which changes every render from useLocalSearchParams).
+    const paramFromAyah = params.fromAyah as string | undefined;
+    const paramToAyah  = params.toAyah  as string | undefined;
     React.useEffect(() => {
         if (verses.length > 0) {
             // Check for Daily Ward params
-            const fromAyah = parseInt(params.fromAyah as string) || 1;
-            const toAyah = parseInt(params.toAyah as string) || verses.length;
+            const fromAyah = parseInt(paramFromAyah ?? '') || 1;
+            const toAyah = parseInt(paramToAyah ?? '') || verses.length;
             setSelectedRange({ from: fromAyah, to: toAyah });
         }
-    }, [verses, params.fromAyah, params.toAyah]);
+    }, [verses.length, paramFromAyah, paramToAyah]);
 
     // ✔️ fetchSurah: reads from LOCAL SQLite DB (ayat.db) — fully offline, instant
     // Previously called api.alquran.cloud every time (needs internet, can fail).
@@ -397,7 +448,7 @@ function ReciteScreenInner() {
     //   - Auto-chunking (stop → send to Muaalem → restart)
     //   - Aggregation of all chunk results on finish
 
-    async function startRecording() {
+    const startRecording = React.useCallback(async () => {
         if (vadRecorder.state.isSessionActive || analyzing) return;
         if (!user) {
             Alert.alert('خطأ', 'يجب تسجيل الدخول أولاً');
@@ -411,9 +462,9 @@ function ReciteScreenInner() {
         }
 
         await vadRecorder.startSession();
-    }
+    }, [vadRecorder, analyzing, user]);
 
-    async function stopRecording() {
+    const stopRecording = React.useCallback(async () => {
         if (!vadRecorder.state.isSessionActive) return;
         if (!user) return;
 
@@ -482,7 +533,7 @@ function ReciteScreenInner() {
                 console.warn('[Audio] Session restore warning:', sessionErr);
             }
         }
-    }
+    }, [vadRecorder, user, learningMode, selectedRange, verses.length]);
 
     // Map Muaalem Arabic categories to the English categories used by FeedbackModal
     function mapMuaalemCategory(cat: string): 'tajweed' | 'pronunciation' | 'elongation' | 'waqf' | 'omission' {
@@ -502,6 +553,7 @@ function ReciteScreenInner() {
             if (!user) return;
             const userId = user.id;
 
+            // ── Save individual mistakes ───────────────────────────────────
             if (assessment.mistakes && assessment.mistakes.length > 0) {
                 const mistakesToSave = assessment.mistakes.map(mistake => ({
                     user_id: userId,
@@ -511,12 +563,21 @@ function ReciteScreenInner() {
                     created_at: new Date().toISOString(),
                 }));
 
-                await supabase.from('mistake_log').insert(mistakesToSave);
+                const mistakeResult = await saveWithRetry(
+                    async () => {
+                        const { data, error } = await supabase.from('mistake_log').insert(mistakesToSave);
+                        return { data, error };
+                    },
+                    { maxRetries: 3, baseDelayMs: 1000 }
+                );
+                if (!mistakeResult.success) {
+                    console.warn('[saveResults] mistake_log insert failed after retries:', mistakeResult.error?.message);
+                }
             }
 
-            // ── ✅ FIXED: Save daily log with surah_number + verse range ──────────────
-            // Previously: always +1 page, no surah_number → completion never detected
-            // Now: compute unique pages from actual verse data, save surah/verse info
+            // ── Save daily log with surah_number + verse range ────────────
+            // Compute unique pages from actual verse data so the completion
+            // detector can match against the user's real progress.
             const versePages = verses
                 .filter(v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to)
                 .map(v => v.page);
@@ -532,24 +593,42 @@ function ReciteScreenInner() {
                 .maybeSingle();
 
             if (existingLog) {
-                await supabase.from('daily_logs').update({
-                    pages_completed: (existingLog.pages_completed || 0) + uniquePages,
-                    verse_from: selectedRange.from,
-                    verse_to:   selectedRange.to,
-                    score:      assessment.score ?? null,
-                    updated_at: new Date().toISOString(),
-                }).eq('id', existingLog.id);
+                const updateResult = await saveWithRetry(
+                    async () => {
+                        const { data, error } = await supabase.from('daily_logs').update({
+                            pages_completed: (existingLog.pages_completed || 0) + uniquePages,
+                            verse_from: selectedRange.from,
+                            verse_to: selectedRange.to,
+                            score: assessment.score ?? null,
+                            updated_at: new Date().toISOString(),
+                        }).eq('id', existingLog.id);
+                        return { data, error };
+                    },
+                    { maxRetries: 3, baseDelayMs: 1000 }
+                );
+                if (!updateResult.success) {
+                    console.warn('[saveResults] daily_logs update failed after retries:', updateResult.error?.message);
+                }
             } else {
-                await supabase.from('daily_logs').insert({
-                    user_id:         userId,
-                    date:            today,
-                    surah_number:    surahNumber,
-                    verse_from:      selectedRange.from,
-                    verse_to:        selectedRange.to,
-                    pages_completed: uniquePages,
-                    score:           assessment.score ?? null,
-                    created_at:      new Date().toISOString(),
-                });
+                const insertResult = await saveWithRetry(
+                    async () => {
+                        const { data, error } = await supabase.from('daily_logs').insert({
+                            user_id: userId,
+                            date: today,
+                            surah_number: surahNumber,
+                            verse_from: selectedRange.from,
+                            verse_to: selectedRange.to,
+                            pages_completed: uniquePages,
+                            score: assessment.score ?? null,
+                            created_at: new Date().toISOString(),
+                        });
+                        return { data, error };
+                    },
+                    { maxRetries: 3, baseDelayMs: 1000 }
+                );
+                if (!insertResult.success) {
+                    console.warn('[saveResults] daily_logs insert failed after retries:', insertResult.error?.message);
+                }
             }
 
             // SM-2: pass the 0-100 score — planner converts it to quality 0-5 internally
@@ -582,15 +661,23 @@ function ReciteScreenInner() {
                 const isDirectlyComplete = selectedRange.to >= totalVerses && selectedRange.from === 1;
                 console.log(`[saveResults] Range ${selectedRange.from}–${selectedRange.to} of ${totalVerses} verses. Direct complete: ${isDirectlyComplete}`);
 
-                // ── RPC: update cumulative progress in DB ─────────────────
-                const { data: progressData, error: progressError } = await supabase
-                    .rpc('upsert_surah_progress', {
-                        p_user_id:      userId,
-                        p_surah:        surahNumber,
-                        p_verse_from:   selectedRange.from,
-                        p_verse_to:     selectedRange.to,
-                        p_total_verses: totalVerses,
-                    });
+                // ── RPC: update cumulative progress in DB ──────────────────
+                const rpcResult = await saveWithRetry(
+                    async () => {
+                        const { data, error } = await supabase.rpc('upsert_surah_progress', {
+                            p_user_id: userId,
+                            p_surah: surahNumber,
+                            p_verse_from: selectedRange.from,
+                            p_verse_to: selectedRange.to,
+                            p_total_verses: totalVerses,
+                        });
+                        return { data, error };
+                    },
+                    { maxRetries: 3, baseDelayMs: 1000 }
+                );
+
+                const progressData = rpcResult.data ?? null;
+                const progressError = rpcResult.success ? null : rpcResult.error;
 
                 let isSurahCompleted = isDirectlyComplete; // client-side check wins
                 let versesDone = selectedRange.to - selectedRange.from + 1;
@@ -598,11 +685,11 @@ function ReciteScreenInner() {
                 if (progressError) {
                     console.warn('[saveResults] upsert_surah_progress failed:', progressError.message);
                 } else {
-                    const rpcResult = Array.isArray(progressData) ? progressData[0] : progressData;
+                    const rpcData = Array.isArray(progressData) ? progressData[0] : progressData;
                     // RPC may report completion from accumulated history
-                    isSurahCompleted = isSurahCompleted || (rpcResult?.out_completed ?? false);
-                    versesDone       = rpcResult?.out_verses_done ?? versesDone;
-                    console.log(`[saveResults] Surah ${surahNumber}: ${versesDone}/${totalVerses} verses (rpc_completed=${rpcResult?.out_completed}, final=${isSurahCompleted})`);
+                    isSurahCompleted = isSurahCompleted || (rpcData?.out_completed ?? false);
+                    versesDone = rpcData?.out_verses_done ?? versesDone;
+                    console.log(`[saveResults] Surah ${surahNumber}: ${versesDone}/${totalVerses} verses (rpc_completed=${rpcData?.out_completed}, final=${isSurahCompleted})`);
                 }
 
                 if (isSurahCompleted) {
@@ -639,6 +726,8 @@ function ReciteScreenInner() {
                             );
                         }, 2500);
                     }
+                    // Skip the generic save alert — surah completion feedback is shown in the modal/navigation
+                    return;
                 }
             }
 
@@ -656,20 +745,38 @@ function ReciteScreenInner() {
             if (user) {
                 // Primary: sync with Supabase
                 if (isBookmarked) {
-                    await supabase
-                        .from('bookmarks')
-                        .delete()
-                        .eq('user_id', user.id)
-                        .eq('surah_number', surahNumber);
-                    setIsBookmarked(false);
+                    const result = await saveWithRetry(
+                        async () => {
+                            const { data, error } = await supabase.from('bookmarks').delete()
+                                .eq('user_id', user.id)
+                                .eq('surah_number', surahNumber);
+                            return { data, error };
+                        },
+                        { maxRetries: 3, baseDelayMs: 1000 }
+                    );
+                    if (result.success) {
+                        setIsBookmarked(false);
+                    } else {
+                        console.warn('[toggleBookmark] delete failed after retries:', result.error?.message);
+                    }
                 } else {
-                    await supabase.from('bookmarks').upsert({
-                        user_id: user.id,
-                        surah_number: surahNumber,
-                        surah_name: surahName,
-                        created_at: new Date().toISOString(),
-                    }, { onConflict: 'user_id,surah_number' });
-                    setIsBookmarked(true);
+                    const result = await saveWithRetry(
+                        async () => {
+                            const { data, error } = await supabase.from('bookmarks').upsert({
+                                user_id: user.id,
+                                surah_number: surahNumber,
+                                surah_name: surahName,
+                                created_at: new Date().toISOString(),
+                            }, { onConflict: 'user_id,surah_number' });
+                            return { data, error };
+                        },
+                        { maxRetries: 3, baseDelayMs: 1000 }
+                    );
+                    if (result.success) {
+                        setIsBookmarked(true);
+                    } else {
+                        console.warn('[toggleBookmark] upsert failed after retries:', result.error?.message);
+                    }
                 }
             } else {
                 // Fallback: local AsyncStorage only
@@ -690,14 +797,6 @@ function ReciteScreenInner() {
         } catch (error) {
             console.error('Error toggling bookmark:', error);
         }
-    }
-
-    function increaseFontSize() {
-        if (currentFontSize < 48) setCurrentFontSize(prev => prev + 2);
-    }
-
-    function decreaseFontSize() {
-        if (currentFontSize > 16) setCurrentFontSize(prev => prev - 2);
     }
 
     // Page range logic
@@ -1022,7 +1121,7 @@ function ReciteScreenInner() {
                 <TafseerBottomSheet
                     visible={tafseerVisible}
                     onClose={() => setTafseerVisible(false)}
-                    targetAyah={tafseerData ? { surah: tafseerData.surah, ayah: tafseerData.ayah } : null}
+                    targetAyah={tafseerTarget}
                 />
 
             </SafeAreaView>
@@ -1120,18 +1219,6 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.semibold,
         color: StaticColors.neutral[300],
-    },
-    floatingActions: {
-        // Kept so old references compile; the FAB UI is now in the footer action bar
-        display: 'none' as any,
-    },
-    fab: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-        ...Shadows.xl,
     },
     // ── Integrated Action Bar (replaces floating FABs) ──
     actionBar: {
