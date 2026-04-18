@@ -8,16 +8,18 @@
  *   - "آيات" (Ayah-by-Ayah) — Per-verse reciters
  *
  * Mirrors the native Android reference app's "اختر القارئ" sheet.
+ *
+ * BUG FIX: renderReciterItem now correctly captures the latest onSelect
+ * via a ref, preventing stale closure issues that caused taps to do nothing.
  */
 
 import * as React from 'react';
 import {
-    View, Text, TouchableOpacity, StyleSheet, FlatList,
-    Dimensions,
+    View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { Music, Check, X, Radio, Layers } from 'lucide-react-native';
-import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { Colors } from '../../constants/theme';
 import { RECITERS_LIBRARY, Reciter, getRecitersByQiraat } from '../../lib/audio-reciters';
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -41,6 +43,11 @@ export default function ReciterBottomSheet({
     qiraat = 'Hafs',
 }: ReciterBottomSheetProps) {
     const [activeTab, setActiveTab] = React.useState<AudioTab>('ayah');
+
+    // ── FIX: Use a ref to always have the latest onSelect callback ────────
+    // This prevents the stale closure in renderReciterItem's useCallback
+    const onSelectRef = React.useRef(onSelect);
+    onSelectRef.current = onSelect;
 
     // Build filtered lists based on Qiraat + audio type
     const reciters = React.useMemo(() => {
@@ -75,10 +82,11 @@ export default function ReciterBottomSheet({
         [],
     );
 
-    function handleSelect(reciter: Reciter) {
-        onSelect(reciter);
+    // ── FIX: handleSelect uses the ref so it never goes stale ─────────────
+    const handleSelect = React.useCallback((reciter: Reciter) => {
+        onSelectRef.current(reciter);
         sheetRef.current?.close();
-    }
+    }, [sheetRef]);
 
     const renderReciterItem = React.useCallback(({ item }: { item: Reciter }) => {
         const isSelected = item.id === currentReciterId;
@@ -125,7 +133,7 @@ export default function ReciterBottomSheet({
                 )}
             </TouchableOpacity>
         );
-    }, [currentReciterId]);
+    }, [currentReciterId, handleSelect]);
 
     return (
         <BottomSheet
