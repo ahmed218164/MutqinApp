@@ -164,7 +164,7 @@ export async function savePushToken(userId: string, token: string) {
         await supabase.from('push_tokens').upsert({
             user_id: userId, token, platform: Platform.OS,
             updated_at: new Date().toISOString(),
-        }, { onConflict: 'token' });
+        }, { onConflict: 'user_id,platform' });
     } catch (e) {
         console.error('خطأ في حفظ التوكن:', e);
     }

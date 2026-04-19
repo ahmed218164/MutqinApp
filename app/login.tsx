@@ -9,9 +9,17 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
-    Animated,
     Dimensions,
 } from 'react-native';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
+    withSequence,
+    withRepeat,
+    runOnJS,
+} from 'react-native-reanimated';
 
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,58 +43,54 @@ export default function LoginScreen() {
     const [forgotSent, setForgotSent] = React.useState(false);
     const [showForgot, setShowForgot] = React.useState(false);
 
-    // Animations
-    const logoScale = React.useRef(new Animated.Value(0.5)).current;
-    const logoOpacity = React.useRef(new Animated.Value(0)).current;
-    const formSlide = React.useRef(new Animated.Value(40)).current;
-    const formOpacity = React.useRef(new Animated.Value(0)).current;
-    const buttonScale = React.useRef(new Animated.Value(1)).current;
-    const errorOpacity = React.useRef(new Animated.Value(0)).current;
-    const errorSlide = React.useRef(new Animated.Value(-8)).current;
+  // Animations — Reanimated 4 (UI-thread, zero JS coordination)
+  const logoScale = useSharedValue(0.5);
+  const logoOpacity = useSharedValue(0);
+  const formSlide = useSharedValue(40);
+  const formOpacity = useSharedValue(0);
+  const buttonScale = useSharedValue(1);
+  const errorOpacity = useSharedValue(0);
+  const errorSlide = useSharedValue(-8);
 
-    React.useEffect(() => {
-        Animated.sequence([
-            Animated.parallel([
-                Animated.spring(logoScale, {
-                    toValue: 1,
-                    ...SpringConfig.bouncy,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(logoOpacity, {
-                    toValue: 1,
-                    duration: AnimationDuration.slow,
-                    useNativeDriver: true,
-                }),
-            ]),
-            Animated.parallel([
-                Animated.timing(formSlide, {
-                    toValue: 0,
-                    duration: AnimationDuration.normal,
-                    easing: AnimationEasing.decelerate,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(formOpacity, {
-                    toValue: 1,
-                    duration: AnimationDuration.normal,
-                    useNativeDriver: true,
-                }),
-            ]),
-        ]).start();
-    }, []);
+  React.useEffect(() => {
+    // Logo entrance: scale spring + opacity fade
+    logoScale.value = withSpring(1, SpringConfig.bouncy);
+    logoOpacity.value = withTiming(1, { duration: AnimationDuration.slow });
+    // Form entrance: slide up + fade
+    formSlide.value = withTiming(0, { duration: AnimationDuration.normal });
+    formOpacity.value = withTiming(1, { duration: AnimationDuration.normal });
+  }, []);
 
-    // Animate error in
-    React.useEffect(() => {
-        if (errorMsg) {
-            errorOpacity.setValue(0);
-            errorSlide.setValue(-8);
-            Animated.parallel([
-                Animated.timing(errorOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
-                Animated.spring(errorSlide, { toValue: 0, ...SpringConfig.snappy, useNativeDriver: true }),
-            ]).start();
-        } else {
-            Animated.timing(errorOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-        }
-    }, [errorMsg]);
+  // Animate error in
+  React.useEffect(() => {
+    if (errorMsg) {
+      errorOpacity.value = 0;
+      errorSlide.value = -8;
+      errorOpacity.value = withTiming(1, { duration: 280 });
+      errorSlide.value = withSpring(0, SpringConfig.snappy);
+    } else {
+      errorOpacity.value = withTiming(0, { duration: 180 });
+    }
+  }, [errorMsg]);
+
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
+    transform: [{ scale: logoScale.value }],
+  }));
+
+  const formAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: formOpacity.value,
+    transform: [{ translateY: formSlide.value }],
+  }));
+
+  const buttonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: buttonScale.value }],
+  }));
+
+  const errorAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: errorOpacity.value,
+    transform: [{ translateY: errorSlide.value }],
+  }));
 
     async function handleLogin() {
         setErrorMsg(null);
@@ -158,14 +162,8 @@ export default function LoginScreen() {
                     <View style={styles.decorCircle1} />
                     <View style={styles.decorCircle2} />
 
-                    {/* Logo */}
-                    <Animated.View style={[
-                        styles.logoContainer,
-                        {
-                            opacity: logoOpacity,
-                            transform: [{ scale: logoScale }],
-                        }
-                    ]}>
+        {/* Logo */}
+        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
                         <View style={styles.logoIcon}>
                             <BookOpen color={Colors.gold[400]} size={36} strokeWidth={2} />
                         </View>
@@ -173,14 +171,8 @@ export default function LoginScreen() {
                         <Text style={styles.tagline}>مساعدك في حفظ القرآن الكريم</Text>
                     </Animated.View>
 
-                    {/* Form */}
-                    <Animated.View style={[
-                        styles.form,
-                        {
-                            opacity: formOpacity,
-                            transform: [{ translateY: formSlide }],
-                        }
-                    ]}>
+        {/* Form */}
+        <Animated.View style={[styles.form, formAnimatedStyle]}>
                         {/* Email Input */}
                         <View style={[
                             styles.inputContainer,
@@ -245,10 +237,7 @@ export default function LoginScreen() {
 
                         {/* ── Inline error / success messages ── */}
                         {errorMsg && (
-                            <Animated.View style={[
-                                styles.errorBanner,
-                                { opacity: errorOpacity, transform: [{ translateY: errorSlide }] }
-                            ]}>
+          <Animated.View style={[styles.errorBanner, errorAnimatedStyle]}>
                                 <AlertCircle color="#f87171" size={16} />
                                 <Text style={styles.errorText}>{errorMsg}</Text>
                             </Animated.View>
@@ -273,27 +262,19 @@ export default function LoginScreen() {
                             <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
                         </TouchableOpacity>
 
-                        {/* Sign In Button */}
-                        <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-                            <TouchableOpacity
-                                accessibilityRole="button"
-                                accessibilityLabel="تسجيل الدخول"
-                                style={[styles.button, loading && styles.buttonDisabled]}
-                                onPress={handleLogin}
-                                onPressIn={() => {
-                                    Animated.spring(buttonScale, {
-                                        toValue: 0.96,
-                                        ...SpringConfig.snappy,
-                                        useNativeDriver: true,
-                                    }).start();
-                                }}
-                                onPressOut={() => {
-                                    Animated.spring(buttonScale, {
-                                        toValue: 1,
-                                        ...SpringConfig.bouncy,
-                                        useNativeDriver: true,
-                                    }).start();
-                                }}
+      {/* Sign In Button */}
+      <Animated.View style={buttonAnimatedStyle}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="تسجيل الدخول"
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          onPressIn={() => {
+            buttonScale.value = withSpring(0.96, SpringConfig.snappy);
+          }}
+          onPressOut={() => {
+            buttonScale.value = withSpring(1, SpringConfig.bouncy);
+          }}
                                 disabled={loading}
                             >
                                 <LinearGradient

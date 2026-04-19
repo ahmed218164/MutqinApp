@@ -54,7 +54,7 @@ interface Props {
     goToPage?: number;
 }
 
-export default function MushafPager({
+function MushafPagerInner({
     startPage,
     endPage,
     currentPage,
@@ -344,3 +344,5 @@ const styles = StyleSheet.create({
     },
 });
 
+const MushafPager = React.memo(MushafPagerInner);
+export default MushafPager;

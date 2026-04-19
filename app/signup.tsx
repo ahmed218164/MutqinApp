@@ -17,7 +17,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserPlus, Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
-import { AnimationDuration, AnimationEasing, SpringConfig } from '../constants/animations';
+import { AnimationDuration, AnimationEasing, LegacySpringConfig } from '../constants/animations';
 import { useAuth } from '../lib/auth';
 import GradientButton from '../components/ui/GradientButton';
 
@@ -70,7 +70,7 @@ export default function SignupScreen() {
             errorSlide.setValue(-8);
             Animated.parallel([
                 Animated.timing(errorOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
-                Animated.spring(errorSlide, { toValue: 0, ...SpringConfig.snappy, useNativeDriver: true }),
+                Animated.spring(errorSlide, { toValue: 0, ...LegacySpringConfig.snappy, useNativeDriver: true }),
             ]).start();
         } else {
             Animated.timing(errorOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();

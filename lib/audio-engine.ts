@@ -823,6 +823,7 @@ class AudioEngineCore {
         this.eventSubs = [];
         this.eventsRegistered = false;
         this.listeners.clear();
+        playerReady = false;
     }
 }
 

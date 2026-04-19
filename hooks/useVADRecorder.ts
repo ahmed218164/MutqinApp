@@ -21,6 +21,7 @@ import { Audio } from 'expo-av';
 import { Alert } from 'react-native';
 import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake, AyahRange } from '../lib/muaalem-api';
 import { mediumImpact } from '../lib/haptics';
+import { useSharedValue } from 'react-native-reanimated';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -48,31 +49,22 @@ interface ChunkResult {
 }
 
 export interface VADRecorderState {
-    /** Whether the overall session is active (user pressed record and hasn't pressed finish) */
     isSessionActive: boolean;
-    /** Whether expo-av is currently recording right now */
     isRecording: boolean;
-    /** Current dB-level normalised to 0..1 for waveform rendering */
-    meterLevel: number;
-    /** Raw metering values buffer (last 20 readings) for waveform bars */
-    meterHistory: number[];
-    /** Elapsed seconds since the user started the session */
     elapsedSeconds: number;
-    /** Number of chunks already split + sent */
     chunksSent: number;
-    /** Number of chunks that have completed analysis */
     chunksCompleted: number;
-    /** Whether we are in "finishing" state — waiting for last chunks to resolve */
     isFinishing: boolean;
 }
 
+import type { SharedValue } from 'react-native-reanimated';
+
 export interface UseVADRecorderReturn {
     state: VADRecorderState;
-    /** Start a new recording session */
+    meterLevelShared: SharedValue<number>;
+    meterHistoryShared: SharedValue<number[]>;
     startSession: () => Promise<void>;
-    /** Finish the session: stop current recording, wait for all chunks, return aggregated result */
     finishSession: () => Promise<MuaalemAssessment | null>;
-    /** Cancel the session without waiting for results */
     cancelSession: () => Promise<void>;
 }
 
@@ -97,13 +89,15 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     const [state, setState] = useState<VADRecorderState>({
         isSessionActive: false,
         isRecording: false,
-        meterLevel: 0,
-        meterHistory: new Array(HISTORY_SIZE).fill(0),
         elapsedSeconds: 0,
         chunksSent: 0,
         chunksCompleted: 0,
         isFinishing: false,
     });
+
+    // ── Reanimated shared values for metering (no React re-renders) ────────
+    const meterLevelShared = useSharedValue(0);
+    const meterHistoryShared = useSharedValue<number[]>(new Array(HISTORY_SIZE).fill(0));
 
     // ── Refs (mutable across renders) ────────────────────────────────────────
     const recordingRef = useRef<Audio.Recording | null>(null);
@@ -117,6 +111,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     const isFinishingRef = useRef(false);
     const referenceTextRef = useRef(referenceText);
     const ayahRangeRef = useRef(ayahRange);
+    const mountedRef = useRef(true);
 
     // Keep ref in sync with latest referenceText to avoid stale closures in setInterval
     useEffect(() => {
@@ -127,6 +122,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     // ── Cleanup on unmount ───────────────────────────────────────────────────
     useEffect(() => {
         return () => {
+            mountedRef.current = false;
             clearTimers();
             if (recordingRef.current) {
                 recordingRef.current.stopAndUnloadAsync().catch(() => {});
@@ -199,33 +195,13 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
                 const db = status.metering ?? -160;
                 const normalised = normaliseMeter(db);
 
-                setState(prev => {
-                    const newHistory = [...prev.meterHistory.slice(1), normalised];
-                    return {
-                        ...prev,
-                        meterLevel: normalised,
-                        meterHistory: newHistory,
-                    };
-                });
-
-                // ── VAD logic: detect silence ────────────────────────────────
-                // DISABLED FOR NOW: We operate in strict "Manual Mode".
-                // The recording continues until the user explicitly stops it.
-                // 
-                // if (db < SILENCE_THRESHOLD_DB) {
-                //     if (silenceStartRef.current === null) {
-                //         silenceStartRef.current = Date.now();
-                //     } else {
-                //         const silenceDuration = Date.now() - silenceStartRef.current;
-                //         if (silenceDuration >= SILENCE_DURATION_MS) {
-                //             silenceStartRef.current = null;
-                //         }
-                //     }
-                // } else {
-                //     silenceStartRef.current = null;
-                // }
+                // Mutate shared values directly — no React setState, no re-render
+                meterLevelShared.value = normalised;
+                meterHistoryShared.value = [
+                    ...meterHistoryShared.value.slice(1),
+                    normalised,
+                ];
             } catch (err) {
-                // Metering failure is non-fatal
                 console.warn('[VAD] Metering poll error:', err);
             }
         }, METERING_INTERVAL_MS);
@@ -266,24 +242,26 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
                 }));
 
                 // Fire-and-forget (we'll collect results on finish)
-                checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current)
-                    .then(assessment => {
-                        chunkEntry.assessment = assessment;
-                        chunkEntry.processing = false;
-                        setState(prev => ({
-                            ...prev,
-                            chunksCompleted: prev.chunksCompleted + 1,
-                        }));
-                    })
-                    .catch(err => {
-                        console.error('[VAD] Chunk analysis failed:', err);
-                        chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع' };
-                        chunkEntry.processing = false;
-                        setState(prev => ({
-                            ...prev,
-                            chunksCompleted: prev.chunksCompleted + 1,
-                        }));
-                    });
+            checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current)
+                .then(assessment => {
+                    if (!mountedRef.current) return;
+                    chunkEntry.assessment = assessment;
+                    chunkEntry.processing = false;
+                    setState(prev => ({
+                        ...prev,
+                        chunksCompleted: prev.chunksCompleted + 1,
+                    }));
+                })
+                .catch(err => {
+                    if (!mountedRef.current) return;
+                    console.error('[VAD] Chunk analysis failed:', err);
+                    chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع' };
+                    chunkEntry.processing = false;
+                    setState(prev => ({
+                        ...prev,
+                        chunksCompleted: prev.chunksCompleted + 1,
+                    }));
+                });
             }
         } catch (err) {
             console.error('[VAD] splitChunk error:', err);
@@ -320,16 +298,18 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
             recordingRef.current = rec;
             chunkStartTimeRef.current = Date.now();
 
-            setState({
-                isSessionActive: true,
-                isRecording: true,
-                meterLevel: 0,
-                meterHistory: new Array(HISTORY_SIZE).fill(0),
-                elapsedSeconds: 0,
-                chunksSent: 0,
-                chunksCompleted: 0,
-                isFinishing: false,
-            });
+        setState({
+            isSessionActive: true,
+            isRecording: true,
+            elapsedSeconds: 0,
+            chunksSent: 0,
+            chunksCompleted: 0,
+            isFinishing: false,
+        });
+
+        // Reset metering shared values
+        meterLevelShared.value = 0;
+        meterHistoryShared.value = new Array(HISTORY_SIZE).fill(0);
 
             // Start pollers
             startMeteringPoller();
@@ -397,14 +377,23 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
             }
         }
 
-        // Wait for all in-flight chunks to complete (max 30s safety)
-        const deadline = Date.now() + 30_000;
-        while (
-            chunkResultsRef.current.some(c => c.processing) &&
-            Date.now() < deadline
-        ) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-        }
+        // Wait for all in-flight chunks to complete using async polling
+        const POLL_INTERVAL = 500;
+        const MAX_WAIT = 30_000;
+        await new Promise<void>((resolve) => {
+            const startTime = Date.now();
+            const poll = setInterval(() => {
+                const stillProcessing = chunkResultsRef.current.some(c => c.processing);
+                const elapsed = Date.now() - startTime;
+                if (!stillProcessing || elapsed >= MAX_WAIT) {
+                    clearInterval(poll);
+                    if (stillProcessing) {
+                        console.warn('[VAD] finishSession: timed out waiting for chunks after', MAX_WAIT, 'ms');
+                    }
+                    resolve();
+                }
+            }, POLL_INTERVAL);
+        });
 
         // Aggregate results
         const aggregated = aggregateChunkResults(chunkResultsRef.current);
@@ -439,16 +428,18 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         setState({
             isSessionActive: false,
             isRecording: false,
-            meterLevel: 0,
-            meterHistory: new Array(HISTORY_SIZE).fill(0),
             elapsedSeconds: 0,
             chunksSent: 0,
             chunksCompleted: 0,
             isFinishing: false,
         });
+
+        // Reset metering shared values
+        meterLevelShared.value = 0;
+        meterHistoryShared.value = new Array(HISTORY_SIZE).fill(0);
     }, []);
 
-    return { state, startSession, finishSession, cancelSession };
+    return { state, meterLevelShared, meterHistoryShared, startSession, finishSession, cancelSession };
 }
 
 // ─── Aggregation ─────────────────────────────────────────────────────────────

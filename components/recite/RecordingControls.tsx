@@ -16,10 +16,42 @@ import Animated, {
     withRepeat,
     withTiming,
     withSequence,
+    useDerivedValue,
+    runOnJS,
 } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { Mic, Square, CheckCircle } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { mediumImpact } from '../../lib/haptics';
+
+const WAVEFORM_BAR_COUNT = 20;
+
+interface AnimatedWaveformBarProps {
+    index: number;
+    meterHistoryShared: SharedValue<number[]>;
+    accentColor: string;
+}
+
+function AnimatedWaveformBar({ index, meterHistoryShared, accentColor }: AnimatedWaveformBarProps) {
+    const animatedStyle = useAnimatedStyle(() => {
+        const history = meterHistoryShared.value;
+        const level = history[index] ?? 0;
+        return {
+            height: Math.max(4, level * 40),
+            opacity: 0.5 + level * 0.5,
+        };
+    });
+
+    return (
+        <Animated.View
+            style={[
+                styles.waveformBar,
+                { backgroundColor: accentColor },
+                animatedStyle,
+            ]}
+        />
+    );
+}
 
 interface RecordingControlsProps {
     recording: boolean;
@@ -30,8 +62,8 @@ interface RecordingControlsProps {
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
     recordingDuration?: number;
     accentColor: string;
-    /** Real-time metering history (0-1 normalised), 20 values from useVADRecorder */
-    meterHistory?: number[];
+    /** Real-time metering history (0-1 normalised), Reanimated SharedValue for zero-jank updates */
+    meterHistoryShared?: SharedValue<number[]>;
     /** Number of VAD chunks sent to Muaalem API */
     chunksSent?: number;
     /** Number of VAD chunks that finished analysis */
@@ -48,7 +80,7 @@ export default function RecordingControls({
     uploadStep = 'idle',
     recordingDuration = 0,
     accentColor,
-    meterHistory,
+    meterHistoryShared,
     chunksSent = 0,
     chunksCompleted = 0,
     isFinishing = false,
@@ -178,29 +210,28 @@ export default function RecordingControls({
         );
     }
 
-    // ── Main recording / idle UI ─────────────────────────────────────────────
+    // ── Waveform bars driven by Reanimated SharedValue (no React re-renders) ──
+    const WaveformBars = React.useCallback(() => {
+        if (!meterHistoryShared) return null;
+        return (
+            <View style={styles.waveformContainer}>
+                {new Array(WAVEFORM_BAR_COUNT).fill(0).map((_, i) => (
+                    <AnimatedWaveformBar
+                        key={i}
+                        index={i}
+                        meterHistoryShared={meterHistoryShared}
+                        accentColor={accentColor}
+                    />
+                ))}
+            </View>
+        );
+    }, [meterHistoryShared, accentColor]);
 
+    // ── Main recording / idle UI ─────────────────────────────────────────────
     return (
         <View style={styles.container}>
-            {/* Real waveform from metering data */}
-            {recording && (
-                <View style={styles.waveformContainer}>
-                    {(meterHistory || new Array(20).fill(0)).map((level, i) => (
-                        <View
-                            key={i}
-                            style={[
-                                styles.waveformBar,
-                                {
-                                    // Real metering: map 0-1 → 4px to 40px height
-                                    height: Math.max(4, level * 40),
-                                    backgroundColor: accentColor,
-                                    opacity: 0.5 + level * 0.5,
-                                },
-                            ]}
-                        />
-                    ))}
-                </View>
-            )}
+            {/* Real waveform from metering data (Reanimated-driven) */}
+            {recording && <WaveformBars />}
 
             {/* VAD chunk indicator */}
             {recording && chunksSent > 0 && (

@@ -22,6 +22,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [initializing, setInitializing] = React.useState(true);
     const router = useRouter();
     const segments = useSegments();
+    const navigatingRef = React.useRef(false);
+
+    const navigateSafely = React.useCallback((path: string) => {
+        if (navigatingRef.current) return;
+        navigatingRef.current = true;
+        router.replace(path);
+        setTimeout(() => { navigatingRef.current = false; }, 1000);
+    }, [router]);
 
     React.useEffect(() => {
         let mounted = true;
@@ -66,21 +74,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 // Auto-navigate based on auth state
-                if (event === 'SIGNED_IN' && newSession) {
-                    console.log('✅ User signed in, checking for plan...');
+            if (event === 'SIGNED_IN' && newSession) {
+                console.log('✅ User signed in, checking for plan...');
 
-                    const hasPlan = await checkHasPlan(newSession.user.id);
+                const hasPlan = await checkHasPlan(newSession.user.id);
 
-                    if (hasPlan) {
-                        console.log('✅ User has plan, navigating to dashboard');
-                        router.replace('/(tabs)');
-                    } else {
-                        console.log('⚠️ No plan found, redirecting to plan screen');
-                        router.replace('/(tabs)/plan');
-                    }
-                } else if (event === 'SIGNED_OUT') {
-                    console.log('👋 User signed out, navigating to login');
-                    router.replace('/login');
+                if (hasPlan) {
+                    console.log('✅ User has plan, navigating to dashboard');
+                    navigateSafely('/(tabs)');
+                } else {
+                    console.log('⚠️ No plan found, redirecting to plan screen');
+                    navigateSafely('/(tabs)/plan');
+                }
+            } else if (event === 'SIGNED_OUT') {
+                console.log('👋 User signed out, navigating to login');
+                navigateSafely('/login');
                 } else if (event === 'TOKEN_REFRESHED') {
                     console.log('🔄 Token refreshed');
                 }
@@ -103,11 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!user && !isAuthPage) {
             // User is not signed in but trying to access protected routes
-            router.replace('/login');
+            navigateSafely('/login');
         }
         // Note: we intentionally do NOT redirect signed-in users away from auth pages
         // here — that's already handled by onAuthStateChange('SIGNED_IN').
-    }, [user, segments, initializing]);
+    }, [user, segments, initializing, navigateSafely]);
 
     const signIn = async (email: string, password: string) => {
         setLoading(true);

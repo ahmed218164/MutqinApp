@@ -156,7 +156,7 @@ export async function awardXP(userId: string, xpAmount: number, reason: string) 
     }
 }
 
-// Check and award achievements
+// Check and award achievements — batched to avoid N+1 round-trips
 export async function checkAchievements(userId: string) {
     try {
         const { data: progress } = await supabase
@@ -244,10 +244,18 @@ export async function checkAchievements(userId: string) {
             });
         }
 
-        // Award achievements (awardAchievement checks for duplicates internally)
-        for (const achievement of achievementsToAward) {
-            await awardAchievement(userId, achievement);
-        }
+        // ── Batch: fetch existing achievements in ONE query, then award only new ones concurrently
+        const candidateTypes = achievementsToAward.map(a => a.type);
+        const { data: existingAchievements } = await supabase
+            .from('achievements')
+            .select('achievement_type')
+            .eq('user_id', userId)
+            .in('achievement_type', candidateTypes);
+
+        const earnedTypes = new Set((existingAchievements ?? []).map(a => a.achievement_type));
+        const newAchievements = achievementsToAward.filter(a => !earnedTypes.has(a.type));
+
+        await Promise.all(newAchievements.map(achievement => awardAchievement(userId, achievement)));
     } catch (error) {
         console.error('Error checking achievements:', error);
     }

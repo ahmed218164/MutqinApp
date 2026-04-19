@@ -17,6 +17,7 @@ import {
     Platform,
 } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import BottomSheet from '@gorhom/bottom-sheet';
@@ -64,7 +65,7 @@ export interface UnifiedAudioControlProps {
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
     recordingDuration?: number;
     // VAD props
-    meterHistory?: number[];
+    meterHistoryShared?: SharedValue<number[]>;
     chunksSent?: number;
     chunksCompleted?: number;
     isFinishing?: boolean;
@@ -117,7 +118,7 @@ function ProgressRing({ progress, color }: { progress: number; color: string }) 
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function UnifiedAudioControl({
+function UnifiedAudioControlInner({
     mode,
     onModeChange,
     surahNumber,
@@ -131,7 +132,7 @@ export default function UnifiedAudioControl({
     analyzing,
     uploadStep = 'idle',
     recordingDuration = 0,
-    meterHistory,
+    meterHistoryShared,
     chunksSent = 0,
     chunksCompleted = 0,
     isFinishing = false,
@@ -523,7 +524,7 @@ export default function UnifiedAudioControl({
                                     uploadStep={uploadStep}
                                     recordingDuration={recordingDuration}
                                     accentColor={accentColor}
-                                    meterHistory={meterHistory}
+                                    meterHistoryShared={meterHistoryShared}
                                     chunksSent={chunksSent}
                                     chunksCompleted={chunksCompleted}
                                     isFinishing={isFinishing}
@@ -716,3 +717,6 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
     },
 });
+
+const UnifiedAudioControl = React.memo(UnifiedAudioControlInner);
+export default UnifiedAudioControl;

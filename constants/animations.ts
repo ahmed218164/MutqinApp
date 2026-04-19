@@ -12,7 +12,17 @@ export const AnimationDuration = {
 } as const;
 
 // Spring configs for natural-feeling animations
+// Reanimated-compatible (damping / stiffness / mass)
+// Legacy Animated.spring equivalents kept in comments for reference
 export const SpringConfig = {
+    gentle: { damping: 20, stiffness: 40, mass: 1 },   // ~friction:10 tension:40
+    bouncy: { damping: 12, stiffness: 80, mass: 1 },   // ~friction:6  tension:80
+    snappy: { damping: 16, stiffness: 120, mass: 1 },   // ~friction:8  tension:120
+    stiff:  { damping: 24, stiffness: 200, mass: 1 },   // ~friction:12 tension:200
+} as const;
+
+// Legacy Animated.spring configs (friction/tension) for any remaining Animated.spring calls
+export const LegacySpringConfig = {
     gentle: { friction: 10, tension: 40 },
     bouncy: { friction: 6, tension: 80 },
     snappy: { friction: 8, tension: 120 },
@@ -80,7 +90,7 @@ export function createSlideUp(animValue: Animated.Value, delay: number = 0) {
 export function createSpringScale(animValue: Animated.Value, toValue: number = 1) {
     return Animated.spring(animValue, {
         toValue,
-        ...SpringConfig.bouncy,
+        ...LegacySpringConfig.bouncy,
         useNativeDriver: true,
     });
 }
