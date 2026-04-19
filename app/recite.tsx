@@ -35,6 +35,9 @@ import AyahContextMenu from '../components/recite/AyahContextMenu';
 import BookmarkHandle from '../components/recite/BookmarkHandle';
 import HifzCover from '../components/recite/HifzCover';
 import TafseerBottomSheet from '../components/mushaf/TafseerBottomSheet';
+import ReciterBottomSheet from '../components/recite/ReciterBottomSheet';
+import BottomSheet from '@gorhom/bottom-sheet';
+import { Reciter, getDefaultReciter } from '../lib/audio-reciters';
 import { fetchSurahHeatmap, HeatmapData } from '../lib/heatmap-data';
 import Animated, {
     useSharedValue,
@@ -65,6 +68,17 @@ function ReciteScreenInner() {
     // Unified Audio Control States
     const [audioMode, setAudioMode] = React.useState<AudioMode>('closed');
     const [activeVerseIndex, setActiveVerseIndex] = React.useState<number | null>(null);
+
+    // ── Reciter state — owned here so ReciterBottomSheet renders OUTSIDE the
+    //    pointerEvents-blocked Animated.View that wraps UnifiedAudioControl.
+    const [selectedReciter, setSelectedReciter] = React.useState<Reciter>(getDefaultReciter());
+    const reciterSheetRef = React.useRef<BottomSheet>(null);
+
+    const handleReciterSelect = React.useCallback((reciter: Reciter) => {
+        // Update state — UnifiedAudioControl's useEffect watches selectedReciter.id
+        // and reconfigures the audio engine automatically when the prop changes.
+        setSelectedReciter(reciter);
+    }, []);
 
     // Range Selection States
     const [selectedRange, setSelectedRange] = React.useState({ from: 1, to: 1 });
@@ -174,7 +188,7 @@ function ReciteScreenInner() {
             // Signal all pending fetches to abort
             controller.abort();
             // Stop any audio playback to release resources
-            try { audioEngine.stop(); } catch {}
+            try { audioEngine.stop(); } catch { }
         };
     }, []);
 
@@ -196,7 +210,7 @@ function ReciteScreenInner() {
     // Destructure param strings once so the effect dependency is a stable string, not the
     // whole params object reference (which changes every render from useLocalSearchParams).
     const paramFromAyah = params.fromAyah as string | undefined;
-    const paramToAyah  = params.toAyah  as string | undefined;
+    const paramToAyah = params.toAyah as string | undefined;
     React.useEffect(() => {
         if (verses.length > 0) {
             // Check for Daily Ward params
@@ -474,7 +488,7 @@ function ReciteScreenInner() {
             <SafeAreaView style={[styles.container, nightMode && { backgroundColor: StaticColors.neutral[900] }]}>
                 {/* Header with immersive slide animation */}
                 <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 }, headerAnimatedStyle]}
-                    pointerEvents={immersive ? 'none' : 'auto'}
+                    pointerEvents="box-none"
                 >
                     <View style={[styles.header, { backgroundColor: headerBg }]}>
                         <TouchableOpacity accessibilityRole="button" accessibilityLabel="العودة" onPress={() => router.back()} style={styles.backButton}>
@@ -660,9 +674,20 @@ function ReciteScreenInner() {
                     )}
                 </View>
 
+                {/* ╔═══════════════════════════════════════════════════╗ */}
+                {/* ║  Reciter Bottom Sheet — rendered at SafeAreaView ROOT level  ║ */}
+                {/* ║  BEFORE the footer so it doesn't block action bar touches   ║ */}
+                {/* ╚═══════════════════════════════════════════════════╝ */}
+                <ReciterBottomSheet
+                    sheetRef={reciterSheetRef}
+                    onSelect={handleReciterSelect}
+                    currentReciterId={selectedReciter.id}
+                    qiraat={activeQiraat === 'Hafs' ? 'Hafs' : 'Warsh'}
+                />
+
                 {/* Unified Audio Control — slides down when immersive */}
                 <Animated.View style={footerAnimatedStyle}
-                    pointerEvents={immersive ? 'none' : 'auto'}
+                    pointerEvents="box-none"
                 >
                     {/* Integrated Action Bar — shown ONLY when audio is closed (replaces floating FABs) */}
                     {audioMode === 'closed' && (
@@ -713,6 +738,8 @@ function ReciteScreenInner() {
                         }}
                         onSurahEnd={handleNextSurah}
                         onSheikhClipReady={(url) => { sheikhClipUrlRef.current = url; }}
+                        selectedReciter={selectedReciter}
+                        onReciterAvatarPress={() => reciterSheetRef.current?.snapToIndex(0)}
                     />
                 </Animated.View>
 

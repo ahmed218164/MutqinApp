@@ -74,6 +74,15 @@ export interface UnifiedAudioControlProps {
     onLearningStepComplete?: () => void;
     onSurahEnd?: () => void;
     onSheikhClipReady?: (url: string | null) => void;
+    /**
+     * Controlled reciter — if provided, the component uses this reciter instead of
+     * its internal default state. Pass together with onReciterAvatarPress so the
+     * parent can open a ReciterBottomSheet rendered OUTSIDE any pointerEvents-blocked
+     * Animated.View (which is the root cause of the selection bug).
+     */
+    selectedReciter?: Reciter;
+    /** Called when the reciter avatar is tapped; parent should open its own bottom sheet. */
+    onReciterAvatarPress?: () => void;
 }
 
 // ── Circular Progress Ring ────────────────────────────────────────────────────
@@ -140,14 +149,22 @@ function UnifiedAudioControlInner({
     onLearningStepComplete,
     onSurahEnd,
     onSheikhClipReady,
+    selectedReciter: externalSelectedReciter,
+    onReciterAvatarPress,
 }: UnifiedAudioControlProps) {
 
     const isHafs = activeQiraat === 'Hafs';
     const accentColor = isHafs ? Colors.emerald[500] : Colors.gold[500];
 
-    // Reciter selection state
-    const [selectedReciter, setSelectedReciter] = React.useState<Reciter>(getDefaultReciter());
-    const reciterSheetRef = React.useRef<BottomSheet>(null);
+    // Reciter selection state — supports controlled (via props) or uncontrolled (internal).
+    const [internalReciter, setInternalReciter] = React.useState<Reciter>(getDefaultReciter());
+    const selectedReciter = externalSelectedReciter ?? internalReciter;
+    const setSelectedReciter = React.useCallback((r: Reciter) => {
+        // Only update internal state when uncontrolled
+        if (!externalSelectedReciter) setInternalReciter(r);
+    }, [externalSelectedReciter]);
+    // Internal sheet ref — used only when parent does NOT provide onReciterAvatarPress
+    const internalReciterSheetRef = React.useRef<BottomSheet>(null);
 
     // Live engine state
     const engineState = useAudioEngine();
@@ -373,7 +390,16 @@ function UnifiedAudioControlInner({
                                 {/* LEFT: Reciter avatar — opens sheet */}
                                 <TouchableOpacity
                                     style={[styles.reciterAvatar, { borderColor: accentColor + '40' }]}
-                                    onPress={() => { lightImpact(); reciterSheetRef.current?.snapToIndex(0); }}
+                                    onPress={() => {
+                                        lightImpact();
+                                        if (onReciterAvatarPress) {
+                                            // Parent owns the sheet (rendered outside blocked Animated.View)
+                                            onReciterAvatarPress();
+                                        } else {
+                                            // Fallback: internal uncontrolled sheet
+                                            internalReciterSheetRef.current?.snapToIndex(0);
+                                        }
+                                    }}
                                     activeOpacity={0.7}
                                 >
                                     <Text style={[styles.reciterAvatarText, { color: accentColor }]}>
@@ -535,13 +561,18 @@ function UnifiedAudioControlInner({
                 </BlurView>
             </Animated.View>
 
-            {/* Reciter Selection Bottom Sheet */}
-            <ReciterBottomSheet
-                sheetRef={reciterSheetRef}
-                onSelect={handleReciterSelect}
-                currentReciterId={selectedReciter.id}
-                qiraat={isHafs ? 'Hafs' : 'Warsh'}
-            />
+            {/* Reciter Bottom Sheet — rendered internally ONLY when parent does not
+                own the sheet (i.e. no onReciterAvatarPress prop). When the parent
+                provides onReciterAvatarPress, it renders ReciterBottomSheet at the
+                SafeAreaView root level, outside any pointerEvents-blocked Animated.View. */}
+            {!onReciterAvatarPress && (
+                <ReciterBottomSheet
+                    sheetRef={internalReciterSheetRef}
+                    onSelect={handleReciterSelect}
+                    currentReciterId={selectedReciter.id}
+                    qiraat={isHafs ? 'Hafs' : 'Warsh'}
+                />
+            )}
         </>
     );
 }
