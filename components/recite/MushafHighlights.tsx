@@ -36,6 +36,9 @@ interface MushafHighlightsProps {
 /**
  * Renders one absolutely-positioned View per bounding box for a given verse key.
  * A single ayah can span multiple rows (multi-line), so we map over ALL matching boxes.
+ *
+ * When `withUnderline` is true, renders an additional 2px accent line at the bottom
+ * of each highlight box for a premium visual anchor.
  */
 function renderHighlightBoxes(
     pageCoords: AyahBoundingBox[],
@@ -44,6 +47,8 @@ function renderHighlightBoxes(
     verseKey: string,
     color: string,
     layerKey: string,
+    withUnderline: boolean = false,
+    underlineColor: string = 'rgba(234, 179, 8, 0.55)',
 ): React.ReactNode[] {
     if (imgWidth === 0 || imgHeight === 0 || pageCoords.length === 0) return [];
 
@@ -56,7 +61,9 @@ function renderHighlightBoxes(
         (b) => b.sura_number === sura && b.aya_number === aya
     );
 
-    return boxes.map((box, i) => {
+    const nodes: React.ReactNode[] = [];
+
+    boxes.forEach((box, i) => {
         // Apply RTL flip: left edge becomes `imgWidth - max_x`, right edge becomes `imgWidth - min_x`
         const left = imgWidth - scaleCoord(box.max_x, imgWidth);
         const top = scaleCoord(box.min_y, imgHeight);
@@ -66,10 +73,11 @@ function renderHighlightBoxes(
         const width = rightEdge - left;
         const height = scaleCoord(box.max_y, imgHeight) - top;
 
-        return (
+        // Background wash
+        nodes.push(
             <Animated.View
                 key={`${layerKey}-${verseKey}-${i}`}
-                entering={FadeIn.duration(180)}
+                entering={FadeIn.duration(200)}
                 exiting={FadeOut.duration(150)}
                 style={{
                     position: 'absolute',
@@ -82,7 +90,29 @@ function renderHighlightBoxes(
                 }}
             />
         );
+
+        // Accent underline — 2px line at the bottom edge
+        if (withUnderline) {
+            nodes.push(
+                <Animated.View
+                    key={`${layerKey}-underline-${verseKey}-${i}`}
+                    entering={FadeIn.duration(300).delay(80)}
+                    exiting={FadeOut.duration(150)}
+                    style={{
+                        position: 'absolute',
+                        left: left + 4,
+                        top: top + height - 2,
+                        width: width - 8,
+                        height: 2,
+                        backgroundColor: underlineColor,
+                        borderRadius: 1,
+                    }}
+                />
+            );
+        }
     });
+
+    return nodes;
 }
 
 function MushafHighlightsInner({
@@ -120,13 +150,15 @@ function MushafHighlightsInner({
         ));
     }
 
-    // Audio highlight (yellow) — rendered on top so it takes visual priority
+    // Audio highlight (warm gold wash + accent underline) — rendered on top
     if (highlightedVerseKey) {
         nodes.push(...renderHighlightBoxes(
             pageCoords, imgWidth, imgHeight,
             highlightedVerseKey,
             HIGHLIGHT_AUDIO_COLOR,
-            'audio'
+            'audio',
+            true,  // withUnderline
+            'rgba(234, 179, 8, 0.50)', // gold accent underline
         ));
     }
 

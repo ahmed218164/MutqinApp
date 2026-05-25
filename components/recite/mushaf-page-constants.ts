@@ -8,14 +8,15 @@
 /** Mushaf paper background (from #fdf6e3 — reference Android crop logic). */
 export const MUSHAF_BG = '#fdf6e3';
 
-/** Highlight color for audio-driven active ayah (yellow, 35% opacity). */
-export const HIGHLIGHT_AUDIO_COLOR = 'rgba(255, 235, 59, 0.35)';
+/** Highlight color for audio-driven active ayah — subtle warm wash at 12% so
+ *  text remains crisp and 100% opaque. Sits BEHIND the Quranic glyphs. */
+export const HIGHLIGHT_AUDIO_COLOR = 'rgba(234, 179, 8, 0.12)';
 
-/** Highlight for long-press / manually selected ayah (emerald 30% opacity). */
-export const HIGHLIGHT_MANUAL_COLOR = 'rgba(52, 211, 153, 0.30)';
+/** Highlight for long-press / manually selected ayah (emerald 15% opacity). */
+export const HIGHLIGHT_MANUAL_COLOR = 'rgba(52, 211, 153, 0.15)';
 
-/** Corner radius for highlight boxes (matches Java: 10.0f). */
-export const HIGHLIGHT_RADIUS = 10;
+/** Corner radius for highlight boxes (softened from Java's 10). */
+export const HIGHLIGHT_RADIUS = 6;
 
 /** Color map for heatmap overlays (revision quality indicators). */
 export const HEATMAP_COLOR_MAP: Record<string, string> = {

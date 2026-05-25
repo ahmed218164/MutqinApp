@@ -257,7 +257,7 @@ function MushafPagerInner({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fdf6e3',  // Mushaf paper — physical color, not theme
+        backgroundColor: '#FFFFFF',  // Pure white — ensures crisp, bright page images
     },
     containerNight: {
         backgroundColor: Colors.neutral[950],

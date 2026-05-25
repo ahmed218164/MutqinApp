@@ -17,7 +17,7 @@ import * as React from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { BottomSheetModal, BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { Music, Check, X, Radio, Layers } from 'lucide-react-native';
 import { Colors } from '../../constants/theme';
 import { RECITERS_LIBRARY, Reciter, getRecitersByQiraat } from '../../lib/audio-reciters';
@@ -26,7 +26,7 @@ import { RECITERS_LIBRARY, Reciter, getRecitersByQiraat } from '../../lib/audio-
 
 interface ReciterBottomSheetProps {
     /** Ref to imperatively open/close the sheet */
-    sheetRef: React.RefObject<BottomSheet>;
+    sheetRef: React.RefObject<BottomSheetModal>;
     onSelect: (reciter: Reciter) => void;
     currentReciterId?: string;
     qiraat?: 'Hafs' | 'Warsh' | 'Qaloon';
@@ -85,7 +85,7 @@ export default function ReciterBottomSheet({
     // ── FIX: handleSelect uses the ref so it never goes stale ─────────────
     const handleSelect = React.useCallback((reciter: Reciter) => {
         onSelectRef.current(reciter);
-        sheetRef.current?.close();
+        sheetRef.current?.dismiss();
     }, [sheetRef]);
 
     const renderReciterItem = React.useCallback(({ item }: { item: Reciter }) => {
@@ -136,9 +136,8 @@ export default function ReciterBottomSheet({
     }, [currentReciterId, handleSelect]);
 
     return (
-        <BottomSheet
+        <BottomSheetModal
             ref={sheetRef}
-            index={-1}
             snapPoints={snapPoints}
             enablePanDownToClose
             backdropComponent={renderBackdrop}
@@ -152,7 +151,7 @@ export default function ReciterBottomSheet({
                     <Text style={styles.headerTitle}>اختر القارئ</Text>
                 </View>
                 <TouchableOpacity
-                    onPress={() => sheetRef.current?.close()}
+                    onPress={() => sheetRef.current?.dismiss()}
                     style={styles.closeButton}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -217,7 +216,7 @@ export default function ReciterBottomSheet({
                 contentContainerStyle={styles.list}
                 showsVerticalScrollIndicator={false}
             />
-        </BottomSheet>
+        </BottomSheetModal>
     );
 }
 

@@ -4,16 +4,15 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Modal,
     ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { audioEngine, configureAudioSession } from '../lib/audio-engine';
-import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark, Plus, Minus, Moon, Sun } from 'lucide-react-native';
+import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark } from 'lucide-react-native';
 import { Colors as StaticColors, Typography, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
@@ -36,6 +35,8 @@ import BookmarkHandle from '../components/recite/BookmarkHandle';
 import HifzCover from '../components/recite/HifzCover';
 import TafseerBottomSheet from '../components/mushaf/TafseerBottomSheet';
 import ReciterBottomSheet from '../components/recite/ReciterBottomSheet';
+import PlaybackScopeSheet, { PlaybackScope } from '../components/recite/PlaybackScopeSheet';
+import UnifiedOptionsSheet from '../components/recite/UnifiedOptionsSheet';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { Reciter, getDefaultReciter } from '../lib/audio-reciters';
 import { fetchSurahHeatmap, HeatmapData } from '../lib/heatmap-data';
@@ -49,9 +50,46 @@ import { useSurahFetcher } from '../hooks/useSurahFetcher';
 import { useBookmarkManager } from '../hooks/useBookmarkManager';
 import { useRecitationSync } from '../hooks/useRecitationSync';
 
+// ── Juz page boundaries (standard Mushaf) ─────────────────────────────────────
+const JUZ_PAGES: number[] = [
+    1,22,42,62,82,102,121,142,162,182,
+    201,222,242,262,282,302,322,342,362,382,
+    402,422,442,462,482,502,522,542,562,582,
+];
+
+function getJuzForPage(page: number): number {
+    for (let j = JUZ_PAGES.length - 1; j >= 0; j--) {
+        if (page >= JUZ_PAGES[j]) return j + 1;
+    }
+    return 1;
+}
+
+// ── Design Tokens (Sanctuary Theme) ─────────────────────────────────────────
+const SANCTUARY = {
+    surface: {
+        primary: '#0C0F14',       // deep obsidian
+        primaryLight: '#FDFBF7',  // warm parchment
+        elevated: '#161B24',      // ink
+        elevatedLight: '#FFFFFF',
+    },
+    header: {
+        bg: 'rgba(12, 15, 20, 0.92)',        // glass header dark
+        bgLight: 'rgba(253, 251, 247, 0.92)', // glass header light
+        borderColor: 'rgba(255,255,255,0.06)',
+        borderColorLight: 'rgba(0,0,0,0.06)',
+    },
+    text: {
+        primary: '#E8E6E1',
+        secondary: '#6B7A8D',
+        primaryLight: '#1A1A2E',
+        secondaryLight: '#64748B',
+    },
+} as const;
+
 function ReciteScreenInner() {
     const router = useRouter();
     const params = useLocalSearchParams();
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const { fontSize, theme, toggleTheme } = useSettings();
     const Colors = useThemeColors();
@@ -59,6 +97,7 @@ function ReciteScreenInner() {
     const surahName = params.surahName as string || 'الفاتحة';
     const surah = getSurahByNumber(surahNumber);
     const activeQiraat = params.activeNarration as string || 'Hafs';
+    const nightMode = theme === 'dark';
 
     // ── Extracted hooks ──────────────────────────────────────────────────────
     const { verses, loadingVerses, error, refetch: refetchSurah } = useSurahFetcher(surahNumber);
@@ -69,14 +108,11 @@ function ReciteScreenInner() {
     const [audioMode, setAudioMode] = React.useState<AudioMode>('closed');
     const [activeVerseIndex, setActiveVerseIndex] = React.useState<number | null>(null);
 
-    // ── Reciter state — owned here so ReciterBottomSheet renders OUTSIDE the
-    //    pointerEvents-blocked Animated.View that wraps UnifiedAudioControl.
+    // ── Reciter state ────────────────────────────────────────────────────────
     const [selectedReciter, setSelectedReciter] = React.useState<Reciter>(getDefaultReciter());
     const reciterSheetRef = React.useRef<BottomSheet>(null);
 
     const handleReciterSelect = React.useCallback((reciter: Reciter) => {
-        // Update state — UnifiedAudioControl's useEffect watches selectedReciter.id
-        // and reconfigures the audio engine automatically when the prop changes.
         setSelectedReciter(reciter);
     }, []);
 
@@ -88,8 +124,7 @@ function ReciteScreenInner() {
     // Pager State
     const [activePage, setActivePage] = React.useState<number>(1);
 
-    // ── VAD Recording (replaces manual start/stop + Gemini) ─────────────────
-    // Compute reference text for the current range
+    // ── VAD Recording ────────────────────────────────────────────────────────
     const rangedVersesForRef = React.useMemo(() => {
         return verses
             .filter(v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to)
@@ -97,7 +132,6 @@ function ReciteScreenInner() {
             .join(' * ');
     }, [verses, selectedRange]);
 
-    // Ayah range sent to API so the backend uses Aya class for canonical text
     const ayahRangeForRef = React.useMemo<AyahRange>(() => ({
         surah: surahNumber,
         ayahFrom: selectedRange.from,
@@ -113,18 +147,14 @@ function ReciteScreenInner() {
     >('idle');
     const [feedback, setFeedback] = React.useState<RecitationAssessment | null>(null);
     const [modalVisible, setModalVisible] = React.useState(false);
-    // Sheikh's first-ayah URL — pre-fetched by UnifiedAudioControl, used as Makhraj reference
     const sheikhClipUrlRef = React.useRef<string | null>(null);
 
-    // Reader Settings
-    const [settingsVisible, setSettingsVisible] = React.useState(false);
+    // Reader Settings — SLICE 2: sheet refs replace modal state
+    const optionsSheetRef = React.useRef<BottomSheet>(null);
+    const scopeSheetRef = React.useRef<BottomSheet>(null);
     const [currentFontSize, setCurrentFontSize] = React.useState(fontSize || 24);
-    const nightMode = theme === 'dark';
-    const setNightMode = (value: boolean) => {
-        if (value !== nightMode) toggleTheme();
-    };
 
-    // Immersive Mode State (Default to true for clean UX)
+    // Immersive Mode State (Default to true)
     const [immersive, setImmersive] = React.useState(true);
 
     // Hifz Cover State
@@ -135,31 +165,29 @@ function ReciteScreenInner() {
     const [heatmapVisible, setHeatmapVisible] = React.useState(false);
     const [heatmapData, setHeatmapData] = React.useState<HeatmapData>({});
 
-    // Context Menu State (long-press Ayah)
+    // Context Menu State
     const [longPressedVerseKey, setLongPressedVerseKey] = React.useState<string | null>(null);
     const [contextMenuVisible, setContextMenuVisible] = React.useState(false);
 
-    // Tafseer Bottom Sheet State (Feature I)
+    // Tafseer Bottom Sheet State
     const [tafseerVisible, setTafseerVisible] = React.useState(false);
     const [tafseerTarget, setTafseerTarget] = React.useState<{ surah: number; ayah: number } | null>(null);
 
-    // Immersive Reanimated values (UI-thread, 60fps)
-    const headerTranslateY = useSharedValue(0);
-    const headerOpacity = useSharedValue(1);
+    // ── Immersive Reanimated values ──────────────────────────────────────────
+    const headerOpacity = useSharedValue(0);
+    const headerTranslateY = useSharedValue(-60);
     const footerTranslateY = useSharedValue(0);
 
-    // Update animations whenever immersive toggles
     React.useEffect(() => {
-        const DURATION = 250;
+        const DURATION = 280;
         headerOpacity.value = withTiming(immersive ? 0 : 1, { duration: DURATION });
-        headerTranslateY.value = withTiming(immersive ? -80 : 0, { duration: DURATION });
-        footerTranslateY.value = withTiming(immersive ? 180 : 0, { duration: DURATION });
+        headerTranslateY.value = withTiming(immersive ? -100 : 0, { duration: DURATION });
+        footerTranslateY.value = withTiming(immersive ? 300 : 0, { duration: DURATION });
     }, [immersive]);
 
     const headerAnimatedStyle = useAnimatedStyle(() => ({
         opacity: headerOpacity.value,
         transform: [{ translateY: headerTranslateY.value }],
-        // pointerEvents must be set via props, not style — handled on the Animated.View below
     }));
 
     const footerAnimatedStyle = useAnimatedStyle(() => ({
@@ -167,8 +195,6 @@ function ReciteScreenInner() {
     }));
 
     // ── Feature I: Tafseer handler ────────────────────────────────────────────
-    // TafseerBottomSheet fetches its own data internally; we only need to pass
-    // the verse coordinates and make the sheet visible.
     const handleTafseerRequest = React.useCallback((verseKey: string) => {
         const [surahStr, ayahStr] = verseKey.split(':');
         const surahNum = parseInt(surahStr, 10);
@@ -177,25 +203,19 @@ function ReciteScreenInner() {
         setTafseerVisible(true);
     }, []);
 
-    // ── Cleanup on unmount: stop audio engine + cancel pending API calls ────
+    // ── Cleanup on unmount ───────────────────────────────────────────────────
     const abortControllerRef = React.useRef<AbortController>(null!);
     React.useEffect(() => {
-        // Create a fresh AbortController each time the effect runs
-        // (fixes: permanently aborted controller after remount)
         const controller = new AbortController();
         abortControllerRef.current = controller;
         return () => {
-            // Signal all pending fetches to abort
             controller.abort();
-            // Stop any audio playback to release resources
             try { audioEngine.stop(); } catch { }
         };
     }, []);
 
-    // Warm up the HF Space on mount
+    // Warm up HF Space
     React.useEffect(() => {
-        // Pre-flight: wake the HF Space from sleep so the model boots
-        // while the user is browsing / setting up their recitation range.
         wakeUpMuaalemSpace(abortControllerRef.current.signal);
     }, [surahNumber]);
 
@@ -207,20 +227,17 @@ function ReciteScreenInner() {
     }, [user, surahNumber]);
 
     // Initialize range when verses are loaded
-    // Destructure param strings once so the effect dependency is a stable string, not the
-    // whole params object reference (which changes every render from useLocalSearchParams).
     const paramFromAyah = params.fromAyah as string | undefined;
     const paramToAyah = params.toAyah as string | undefined;
     React.useEffect(() => {
         if (verses.length > 0) {
-            // Check for Daily Ward params
             const fromAyah = parseInt(paramFromAyah ?? '') || 1;
             const toAyah = parseInt(paramToAyah ?? '') || verses.length;
             setSelectedRange({ from: fromAyah, to: toAyah });
         }
     }, [verses.length, paramFromAyah, paramToAyah]);
 
-    // Initialize active page and verse index when verses are loaded by useSurahFetcher
+    // Initialize active page
     React.useEffect(() => {
         if (verses.length > 0) {
             setActivePage(verses[0].page);
@@ -229,31 +246,21 @@ function ReciteScreenInner() {
     }, [verses]);
 
     // ── Navigation Logic (plan-aware) ──────────────────────────────────────
-    // The "next" surah depends on the user's memorization plan direction:
-    //   forward:  surah + 1 (1→2→3→114)
-    //   backward: surah - 1 (114→113→112→1)
-    //   both:     determined by which side this surah belongs to
     const planRef = React.useRef<MemorizationPlan | null>(null);
 
-    // Fetch plan once on mount (lightweight — single row)
     React.useEffect(() => {
         if (user) {
             fetchPlan(user.id).then(p => { planRef.current = p; });
         }
     }, [user?.id]);
 
-    /**
-     * Determine which side of the plan this surah belongs to.
-     * For 'both' plans: compare current surah to fwd/bwd cursors.
-     */
     const getPlanSide = React.useCallback((): 'forward' | 'backward' => {
         const plan = planRef.current;
-        if (!plan) return 'forward'; // No plan = default forward
+        if (!plan) return 'forward';
         if (plan.direction === 'forward') return 'forward';
         if (plan.direction === 'backward') return 'backward';
-        // 'both': check which cursor matches the current surah
         if (surahNumber === plan.bwdSurah) return 'backward';
-        return 'forward'; // default to forward if ambiguous
+        return 'forward';
     }, [surahNumber]);
 
     const handleNextSurah = React.useCallback(() => {
@@ -263,7 +270,6 @@ function ReciteScreenInner() {
         if (side === 'backward') {
             nextSurahNumber = surahNumber - 1;
             if (nextSurahNumber < 1) {
-                // Reached Al-Fatiha going backwards — journey complete
                 Alert.alert(
                     '🎉 ما شاء الله!',
                     'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
@@ -293,7 +299,7 @@ function ReciteScreenInner() {
         }
     }, [surahNumber, activeQiraat, router, getPlanSide]);
 
-    // Sync Active Page when verse changes (Audio Playback)
+    // Sync Active Page when verse changes
     React.useEffect(() => {
         if (verses.length > 0 && activeVerseIndex !== null) {
             const verse = verses[activeVerseIndex];
@@ -304,12 +310,6 @@ function ReciteScreenInner() {
     }, [activeVerseIndex]); // Depend on verse index change
 
     // ── VAD-based start/stop ────────────────────────────────────────────────
-    // Replaces the old manual startRecording/stopRecording + Gemini pipeline.
-    // useVADRecorder handles:
-    //   - Metering-driven silence detection
-    //   - Auto-chunking (stop → send to Muaalem → restart)
-    //   - Aggregation of all chunk results on finish
-
     const startRecording = React.useCallback(async () => {
         if (vadRecorder.state.isSessionActive || analyzing) return;
         if (!user) {
@@ -317,7 +317,6 @@ function ReciteScreenInner() {
             return;
         }
 
-        // Pause AudioEngine before switching iOS session to recording mode
         const engineSnap = audioEngine.getSnapshot();
         if (engineSnap.isPlaying) {
             audioEngine.togglePlayback();
@@ -336,7 +335,6 @@ function ReciteScreenInner() {
         try {
             mediumImpact();
 
-            // finishSession stops the last chunk, waits for all API calls, aggregates
             const aggregatedResult = await vadRecorder.finishSession();
 
             if (!aggregatedResult) {
@@ -349,7 +347,6 @@ function ReciteScreenInner() {
                 return;
             }
 
-            // Convert Muaalem result to RecitationAssessment for backward compat
             const result: RecitationAssessment = {
                 score: aggregatedResult.score,
                 mistakes: aggregatedResult.mistakes.map(m => ({
@@ -366,7 +363,6 @@ function ReciteScreenInner() {
             setFeedback(result);
             setModalVisible(true);
 
-            // Save results via extracted hook and handle progression
             const outcome = await saveResults(result, {
                 userId: user.id,
                 surahNumber,
@@ -376,7 +372,6 @@ function ReciteScreenInner() {
                 getPlanSide,
             });
 
-            // Handle surah completion navigation
             if (outcome.isSurahCompleted) {
                 if (outcome.hasNextSurah) {
                     setTimeout(() => {
@@ -395,7 +390,6 @@ function ReciteScreenInner() {
                 }
             }
 
-            // Learning mode: advance on minor-only errors OR no errors
             if (learningMode) {
                 const hasNonMinorError = result.mistakes?.some(
                     (m: any) => m.severity !== 'minor'
@@ -414,7 +408,6 @@ function ReciteScreenInner() {
             setAnalyzing(false);
             setUploadStep('idle');
 
-            // Restore playback session after recording (RNTP handles audio config)
             try {
                 await configureAudioSession(true);
             } catch (sessionErr) {
@@ -423,7 +416,6 @@ function ReciteScreenInner() {
         }
     }, [vadRecorder, user, learningMode, selectedRange, verses, surahNumber, surahName, saveResults, getPlanSide, handleNextSurah]);
 
-    // Map Muaalem Arabic categories to the English categories used by FeedbackModal
     function mapMuaalemCategory(cat: string): 'tajweed' | 'pronunciation' | 'elongation' | 'waqf' | 'omission' {
         switch (cat) {
             case 'تجويد': return 'tajweed';
@@ -438,8 +430,39 @@ function ReciteScreenInner() {
     // Page range logic
     const startPage = verses.length > 0 ? verses[0].page : 1;
     const endPage = verses.length > 0 ? verses[verses.length - 1].page : 1;
+    const currentJuz = getJuzForPage(activePage);
 
-    // Build verseKey → page map for audio-sync auto page-flip in MushafPager
+    // ── SLICE 2: Playback Scope handler ──────────────────────────────────────
+    const handleScopeSelect = React.useCallback((scope: PlaybackScope) => {
+        switch (scope) {
+            case 'page': {
+                // Find verses on the current page
+                const pageVerses = verses.filter(v => v.page === activePage);
+                if (pageVerses.length > 0) {
+                    setSelectedRange({
+                        from: pageVerses[0].numberInSurah,
+                        to: pageVerses[pageVerses.length - 1].numberInSurah,
+                    });
+                }
+                break;
+            }
+            case 'surah':
+                setSelectedRange({ from: 1, to: verses.length });
+                break;
+            case 'juz':
+                // For simplicity, default to full surah (juz boundaries are cross-surah)
+                setSelectedRange({ from: 1, to: verses.length });
+                break;
+            case 'custom':
+                setShowRangeSelector(true);
+                return; // Don't start playback yet
+            default:
+                return;
+        }
+        setAudioMode('listen');
+    }, [verses, activePage]);
+
+    // Build verseKey → page map
     const versePageMap = React.useMemo<Record<string, number>>(() => {
         const map: Record<string, number> = {};
         for (const v of verses) {
@@ -455,7 +478,7 @@ function ReciteScreenInner() {
         return v ? `${surahNumber}:${v.numberInSurah}` : undefined;
     }, [activeVerseIndex, verses, surahNumber]);
 
-    // Context menu: get ayah text for the long-pressed verse
+    // Context menu helpers
     const contextMenuAyahText = React.useMemo(() => {
         if (!longPressedVerseKey) return '';
         const [, ayahNumStr] = longPressedVerseKey.split(':');
@@ -463,7 +486,6 @@ function ReciteScreenInner() {
         return verses.find(v => v.numberInSurah === ayahNum)?.text ?? '';
     }, [longPressedVerseKey, verses]);
 
-    // Play Ayah from context menu: navigate audio to that verse
     const handlePlayAyahFromMenu = React.useCallback((verseKey: string) => {
         const [, ayahNumStr] = verseKey.split(':');
         const ayahNum = parseInt(ayahNumStr, 10);
@@ -477,7 +499,6 @@ function ReciteScreenInner() {
     // Dynamic colors based on Qiraat
     const isHafs = activeQiraat === 'Hafs';
     const accentColor = isHafs ? StaticColors.emerald[500] : StaticColors.gold[500];
-    const headerBg = isHafs ? StaticColors.emerald[950] : StaticColors.gold[950];
 
     return (
         <KeyboardAvoidingView
@@ -485,107 +506,119 @@ function ReciteScreenInner() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
         >
-            <SafeAreaView style={[styles.container, nightMode && { backgroundColor: StaticColors.neutral[900] }]}>
-                {/* Header with immersive slide animation */}
-                <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 }, headerAnimatedStyle]}
-                    pointerEvents="box-none"
+            <View style={[
+                styles.rootContainer,
+                { backgroundColor: nightMode ? SANCTUARY.surface.primary : '#FFFFFF' },
+            ]}>
+                {/* ═══════════════════════════════════════════════════════════════ */}
+                {/* ██  MINIMAL GLASS HEADER — Back + Title + Bookmark           ██ */}
+                {/* ═══════════════════════════════════════════════════════════════ */}
+                <Animated.View
+                    style={[
+                        styles.headerOuter,
+                        { paddingTop: insets.top },
+                        headerAnimatedStyle,
+                    ]}
+                    pointerEvents={immersive ? 'none' : 'box-none'}
                 >
-                    <View style={[styles.header, { backgroundColor: headerBg }]}>
-                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="العودة" onPress={() => router.back()} style={styles.backButton}>
-                            <ArrowLeft color={Colors.text.inverse} size={24} />
+                    <View style={[
+                        styles.headerInner,
+                        {
+                            backgroundColor: nightMode
+                                ? SANCTUARY.header.bg
+                                : SANCTUARY.header.bgLight,
+                            borderBottomColor: nightMode
+                                ? SANCTUARY.header.borderColor
+                                : SANCTUARY.header.borderColorLight,
+                        },
+                    ]}>
+                        {/* Back button */}
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel="العودة"
+                            onPress={() => router.back()}
+                            style={styles.headerBtn}
+                        >
+                            <ArrowLeft
+                                color={nightMode ? SANCTUARY.text.primary : SANCTUARY.text.primaryLight}
+                                size={22}
+                            />
                         </TouchableOpacity>
-                        <View style={styles.headerInfo}>
-                            <Text style={styles.headerTitle}>{surah?.name || 'سورة الفاتحة'}</Text>
-                            <Text style={styles.headerSubtitle}>صفحة {activePage} • {surah?.transliteration || 'Al-Fatihah'}</Text>
+
+                        {/* Center: Surah name + page */}
+                        <View style={styles.headerCenter}>
+                            <Text style={[
+                                styles.headerTitle,
+                                { color: nightMode ? SANCTUARY.text.primary : SANCTUARY.text.primaryLight },
+                            ]}>
+                                {surah?.name || 'سورة الفاتحة'}
+                            </Text>
+                            <Text style={[
+                                styles.headerSubtitle,
+                                { color: nightMode ? SANCTUARY.text.secondary : SANCTUARY.text.secondaryLight },
+                            ]}>
+                                صفحة {activePage} · {surah?.transliteration || 'Al-Fatihah'}
+                            </Text>
                         </View>
-                        <View style={styles.headerActions}>
-                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="خريطة التجويد" onPress={() => setHeatmapVisible(v => !v)} style={[styles.iconButton, heatmapVisible && { backgroundColor: 'rgba(239,68,68,0.2)', borderRadius: 8 }]}>
-                                <Text style={{ fontSize: 18 }}>🌡️</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="غطاء الحفظ" onPress={() => setHifzCoverVisible(v => !v)} style={[styles.iconButton, hifzCoverVisible && { backgroundColor: 'rgba(52,211,153,0.25)', borderRadius: 8 }]}>
-                                <Text style={{ fontSize: 18 }}>📖</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="حفظ السورة" onPress={() => toggleBookmark()} style={styles.iconButton}>
-                                <Bookmark
-                                    color={isBookmarked ? StaticColors.gold[500] : Colors.text.inverse}
-                                    fill={isBookmarked ? StaticColors.gold[500] : 'transparent'}
-                                    size={24}
-                                />
-                            </TouchableOpacity>
-                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="الإعدادات" onPress={() => setSettingsVisible(true)} style={styles.iconButton}>
-                                <SettingsIcon color={Colors.text.inverse} size={24} />
-                            </TouchableOpacity>
-                        </View>
+
+                        {/* Bookmark */}
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel="حفظ السورة"
+                            onPress={() => toggleBookmark()}
+                            style={styles.headerBtn}
+                        >
+                            <Bookmark
+                                color={isBookmarked
+                                    ? StaticColors.gold[500]
+                                    : (nightMode ? SANCTUARY.text.secondary : SANCTUARY.text.secondaryLight)}
+                                fill={isBookmarked ? StaticColors.gold[500] : 'transparent'}
+                                size={22}
+                            />
+                        </TouchableOpacity>
+
+                        {/* Settings — SLICE 2: opens UnifiedOptionsSheet */}
+                        <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel="الإعدادات"
+                            onPress={() => optionsSheetRef.current?.snapToIndex(0)}
+                            style={styles.headerBtn}
+                        >
+                            <SettingsIcon
+                                color={nightMode ? SANCTUARY.text.secondary : SANCTUARY.text.secondaryLight}
+                                size={20}
+                            />
+                        </TouchableOpacity>
                     </View>
                 </Animated.View>
 
-                {/* Reader Settings Modal */}
-                <Modal
-                    animationType="fade"
-                    transparent={true}
-                    visible={settingsVisible}
-                    onRequestClose={() => setSettingsVisible(false)}
-                >
-                    <TouchableOpacity
-                        style={styles.modalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setSettingsVisible(false)}
-                    >
-                        <View style={[styles.settingsModal, { backgroundColor: nightMode ? '#1e293b' : '#ffffff' }]}>
-                            <Text style={[styles.settingsTitle, { color: nightMode ? '#ffffff' : '#000000' }]}>إعدادات القارئ</Text>
+                {/* Settings Modal removed — replaced by UnifiedOptionsSheet at bottom */}
 
-                            {/* وضع الليل */}
-                            <View style={styles.settingRow}>
-                                <Text style={[styles.settingLabel, { color: nightMode ? '#cbd5e1' : '#475569' }]}>{nightMode ? 'الوضع الليلي' : 'الوضع النهاري'}</Text>
-                                <TouchableOpacity onPress={() => setNightMode(!nightMode)}>
-                                    {nightMode ? (
-                                        <Sun color={StaticColors.gold[500]} size={24} />
-                                    ) : (
-                                        <Moon color={StaticColors.neutral[400]} size={24} />
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* حجم الخط */}
-                            <View style={styles.settingRow}>
-                                <Text style={[styles.settingLabel, { color: nightMode ? '#cbd5e1' : '#475569' }]}>حجم الخط</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
-                                    <TouchableOpacity
-                                        onPress={() => setCurrentFontSize(prev => Math.max(14, prev - 2))}
-                                        style={{ padding: Spacing.xs }}
-                                    >
-                                        <Minus color={nightMode ? '#cbd5e1' : '#475569'} size={20} />
-                                    </TouchableOpacity>
-                                    <Text style={[styles.settingLabel, { color: nightMode ? '#ffffff' : '#000000', fontWeight: '700', minWidth: 28, textAlign: 'center' }]}>
-                                        {currentFontSize}
-                                    </Text>
-                                    <TouchableOpacity
-                                        onPress={() => setCurrentFontSize(prev => Math.min(40, prev + 2))}
-                                        style={{ padding: Spacing.xs }}
-                                    >
-                                        <Plus color={nightMode ? '#cbd5e1' : '#475569'} size={20} />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-                    </TouchableOpacity>
-                </Modal>
-
-                {/* Content: Pager View */}
-                <View style={styles.content}>
+                {/* ═══════════════════════════════════════════════════════════════ */}
+                {/* ██  CONTENT: MUSHAF PAGER                                   ██ */}
+                {/* ═══════════════════════════════════════════════════════════════ */}
+                <View style={[styles.content, !nightMode && { backgroundColor: '#FFFFFF' }]}>
                     {loadingVerses ? (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color={Colors.gold[600]} />
-                            <Text style={styles.loadingText}>جارٍ تحميل الصفحات...</Text>
+                        <View style={[
+                            styles.loadingContainer,
+                            { backgroundColor: nightMode ? SANCTUARY.surface.primary : '#FFFFFF' },
+                        ]}>
+                            <ActivityIndicator size="large" color={accentColor} />
+                            <Text style={[styles.loadingText, { color: accentColor }]}>
+                                جارٍ تحميل الصفحات...
+                            </Text>
                         </View>
                     ) : error ? (
-                        <View style={styles.errorContainer}>
-                            <AlertCircle color={Colors.error} size={48} />
+                        <View style={[
+                            styles.errorContainer,
+                            { backgroundColor: nightMode ? SANCTUARY.surface.primary : '#FFFFFF' },
+                        ]}>
+                            <AlertCircle color={StaticColors.error} size={48} />
                             <Text style={styles.errorText}>{error}</Text>
                             <TouchableOpacity
                                 accessibilityRole="button"
                                 accessibilityLabel="إعادة المحاولة"
-                                style={styles.retryButton}
+                                style={[styles.retryButton, { backgroundColor: accentColor }]}
                                 onPress={() => refetchSurah()}
                             >
                                 <Text style={styles.retryButtonText}>إعادة المحاولة</Text>
@@ -593,10 +626,20 @@ function ReciteScreenInner() {
                         </View>
                     ) : (
                         <>
-                            {/* Compact Range Selector */}
-                            <Animated.View style={[styles.compactRangeContainer, { position: 'absolute', top: 90, left: 0, right: 0, zIndex: 90 }, headerAnimatedStyle]}>
+                            {/* Compact Range Selector (animated with header) */}
+                            <Animated.View
+                                style={[
+                                    styles.compactRangeContainer,
+                                    { top: insets.top + 56, zIndex: 90 },
+                                    headerAnimatedStyle,
+                                ]}
+                                pointerEvents={immersive ? 'none' : 'box-none'}
+                            >
                                 {showRangeSelector ? (
-                                    <View>
+                                    <View style={[
+                                        styles.rangeSelectorCard,
+                                        { backgroundColor: nightMode ? SANCTUARY.surface.elevated : SANCTUARY.surface.elevatedLight },
+                                    ]}>
                                         <RangeSelector
                                             totalVerses={verses.length}
                                             selectedRange={selectedRange}
@@ -604,12 +647,15 @@ function ReciteScreenInner() {
                                             surahName={surah?.name}
                                         />
                                         <TouchableOpacity
-                                            style={[styles.learningModeToggle, { borderColor: accentColor }]}
+                                            style={[styles.learningModeToggle, { borderColor: accentColor + '30' }]}
                                             onPress={() => setLearningMode(!learningMode)}
                                             accessibilityRole="switch"
                                             accessibilityState={{ checked: learningMode }}
                                         >
-                                            <Text style={[styles.learningModeText, learningMode && { color: accentColor }]}>
+                                            <Text style={[
+                                                styles.learningModeText,
+                                                learningMode && { color: accentColor },
+                                            ]}>
                                                 🎓 وضع التعلم {learningMode ? '(مفعّل)' : '(معطّل)'}
                                             </Text>
                                         </TouchableOpacity>
@@ -617,26 +663,39 @@ function ReciteScreenInner() {
                                             style={styles.collapseButton}
                                             onPress={() => setShowRangeSelector(false)}
                                         >
-                                            <Text style={styles.collapseButtonText}>▲ طيّ</Text>
+                                            <Text style={[styles.collapseButtonText, { color: SANCTUARY.text.secondary }]}>
+                                                ▲ طيّ
+                                            </Text>
                                         </TouchableOpacity>
                                     </View>
                                 ) : (
                                     <TouchableOpacity
-                                        style={[styles.compactRangeButton, { borderColor: accentColor + '40' }]}
+                                        style={[
+                                            styles.compactRangeButton,
+                                            {
+                                                backgroundColor: nightMode
+                                                    ? SANCTUARY.surface.elevated
+                                                    : SANCTUARY.surface.elevatedLight,
+                                                borderColor: accentColor + '20',
+                                            },
+                                        ]}
                                         onPress={() => setShowRangeSelector(true)}
                                     >
-                                        <Text style={styles.compactRangeText}>
+                                        <Text style={[
+                                            styles.compactRangeText,
+                                            { color: nightMode ? SANCTUARY.text.primary : SANCTUARY.text.primaryLight },
+                                        ]}>
                                             📖 آية {selectedRange.from}-{selectedRange.to}
-                                            {learningMode && ' • 🎓 وضع التعلم'}
+                                            {learningMode && ' · 🎓 تعلم'}
                                         </Text>
                                         <Text style={[styles.expandText, { color: accentColor }]}>▼</Text>
                                     </TouchableOpacity>
                                 )}
                             </Animated.View>
 
-                            {/* Mushaf spanning the full area */}
+                            {/* Mushaf spanning full area */}
                             <View
-                                style={{ flex: 1, paddingBottom: 0 }}
+                                style={{ flex: 1 }}
                                 onLayout={(e) => setPagerHeight(e.nativeEvent.layout.height)}
                             >
                                 <MushafPager
@@ -658,13 +717,6 @@ function ReciteScreenInner() {
                                     }}
                                 />
 
-                                {/* Bookmark ribbon handle — appears on right edge */}
-                                <BookmarkHandle
-                                    isBookmarked={isBookmarked}
-                                    onToggle={() => toggleBookmark()}
-                                    nightMode={nightMode}
-                                />
-
                                 {/* Hifz Cover Overlay */}
                                 {hifzCoverVisible && pagerHeight > 0 && (
                                     <HifzCover containerHeight={pagerHeight} />
@@ -674,47 +726,48 @@ function ReciteScreenInner() {
                     )}
                 </View>
 
-                {/* ╔═══════════════════════════════════════════════════╗ */}
-                {/* ║  Reciter Bottom Sheet — rendered at SafeAreaView ROOT level  ║ */}
-                {/* ║  BEFORE the footer so it doesn't block action bar touches   ║ */}
-                {/* ╚═══════════════════════════════════════════════════╝ */}
-                <ReciterBottomSheet
-                    sheetRef={reciterSheetRef}
-                    onSelect={handleReciterSelect}
-                    currentReciterId={selectedReciter.id}
-                    qiraat={activeQiraat === 'Hafs' ? 'Hafs' : 'Warsh'}
-                />
 
-                {/* Unified Audio Control — slides down when immersive */}
-                <Animated.View style={footerAnimatedStyle}
+                {/* ═══════════════════════════════════════════════════════════════ */}
+                {/* ██  FLOATING DOCK — Action Bar (closed) + Unified Control   ██ */}
+                {/* ═══════════════════════════════════════════════════════════════ */}
+
+                {/* Immersive-aware footer — absolute positioned, passes touches through to PagerView */}
+                <Animated.View
+                    style={[styles.footerWrapper, footerAnimatedStyle]}
                     pointerEvents="box-none"
                 >
-                    {/* Integrated Action Bar — shown ONLY when audio is closed (replaces floating FABs) */}
+                    {/* Action bar: shown when audio dock is closed */}
                     {audioMode === 'closed' && (
-                        <View style={styles.actionBar}>
+                        <View style={[
+                            styles.actionBar,
+                            {
+                                bottom: Math.max(insets.bottom, 8) + 8,
+                                backgroundColor: nightMode ? SANCTUARY.surface.elevated : SANCTUARY.surface.elevatedLight,
+                            },
+                        ]}>
                             <TouchableOpacity
-                                style={[styles.actionBarButton, { borderColor: StaticColors.emerald[500] + '50', backgroundColor: StaticColors.emerald[600] + '20' }]}
-                                onPress={() => setAudioMode('listen')}
+                                style={[styles.actionBarButton, { backgroundColor: StaticColors.emerald[500] + '1A' }]}
+                                onPress={() => scopeSheetRef.current?.snapToIndex(0)}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open listen mode"
                             >
-                                <Play color={StaticColors.emerald[400]} size={20} />
-                                <Text style={[styles.actionBarButtonText, { color: StaticColors.emerald[400] }]}>استماع</Text>
+                                <Play color={StaticColors.emerald[400]} size={22} fill={StaticColors.emerald[400]} />
+                                <Text style={[styles.actionBarButtonText, { color: StaticColors.emerald[300] }]}>استماع</Text>
                             </TouchableOpacity>
 
-                            <View style={styles.actionBarDivider} />
-
                             <TouchableOpacity
-                                style={[styles.actionBarButton, { borderColor: accentColor + '50', backgroundColor: accentColor + '20' }]}
+                                style={[styles.actionBarButton, { backgroundColor: accentColor + '1A' }]}
                                 onPress={() => setAudioMode('record')}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open record mode"
                             >
-                                <Mic color={accentColor} size={20} />
-                                <Text style={[styles.actionBarButtonText, { color: accentColor }]}>تسميع</Text>
+                                <Mic color={accentColor} size={22} />
+                                <Text style={[styles.actionBarButtonText, { color: isHafs ? StaticColors.emerald[300] : StaticColors.gold[300] }]}>تسميع</Text>
                             </TouchableOpacity>
                         </View>
                     )}
+
+                    {/* Floating Sanctuary Dock */}
                     <UnifiedAudioControl
                         mode={audioMode}
                         onModeChange={setAudioMode}
@@ -740,10 +793,11 @@ function ReciteScreenInner() {
                         onSheikhClipReady={(url) => { sheikhClipUrlRef.current = url; }}
                         selectedReciter={selectedReciter}
                         onReciterAvatarPress={() => reciterSheetRef.current?.snapToIndex(0)}
+                        bottomInset={insets.bottom}
                     />
                 </Animated.View>
 
-                {/* Feedback Modal — outside footer animation */}
+                {/* Feedback Modal */}
                 <FeedbackModal
                     visible={modalVisible}
                     onClose={() => setModalVisible(false)}
@@ -751,7 +805,7 @@ function ReciteScreenInner() {
                     saving={saving}
                 />
 
-                {/* Ayah Context Menu overlay — at SafeAreaView root level */}
+                {/* Ayah Context Menu */}
                 <AyahContextMenu
                     visible={contextMenuVisible}
                     verseKey={longPressedVerseKey ?? '1:1'}
@@ -764,211 +818,244 @@ function ReciteScreenInner() {
                     onTafseer={handleTafseerRequest}
                 />
 
-                {/* Tafseer Bottom Sheet — Feature I */}
-                {/* Props: targetAyah (single ayah from long-press) or pageAyahs (page mode) */}
+                {/* Tafseer Bottom Sheet */}
                 <TafseerBottomSheet
                     visible={tafseerVisible}
                     onClose={() => setTafseerVisible(false)}
                     targetAyah={tafseerTarget}
                 />
+            </View>
 
-            </SafeAreaView>
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* ██  Bottom Sheets — OUTSIDE rootContainer to prevent          ██ */}
+            {/* ██  ghost touch interception from idle backdrop containers    ██ */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <ReciterBottomSheet
+                sheetRef={reciterSheetRef}
+                onSelect={handleReciterSelect}
+                currentReciterId={selectedReciter.id}
+                qiraat={activeQiraat === 'Hafs' ? 'Hafs' : 'Warsh'}
+            />
+
+            <PlaybackScopeSheet
+                sheetRef={scopeSheetRef}
+                nightMode={nightMode}
+                accentColor={accentColor}
+                surahName={surah?.name || 'سورة'}
+                currentPage={activePage}
+                currentJuz={currentJuz}
+                totalVerses={verses.length}
+                onScopeSelect={handleScopeSelect}
+            />
+
+            <UnifiedOptionsSheet
+                sheetRef={optionsSheetRef}
+                nightMode={nightMode}
+                accentColor={accentColor}
+                reciterName={selectedReciter.nameArabic}
+                fontSize={currentFontSize}
+                heatmapVisible={heatmapVisible}
+                hifzCoverVisible={hifzCoverVisible}
+                onReciterPress={() => reciterSheetRef.current?.snapToIndex(0)}
+                onNightModeToggle={toggleTheme}
+                onFontSizeChange={setCurrentFontSize}
+                onHeatmapToggle={() => setHeatmapVisible(v => !v)}
+                onHifzToggle={() => setHifzCoverVisible(v => !v)}
+            />
         </KeyboardAvoidingView>
     );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-    container: {
+    rootContainer: {
         flex: 1,
-        backgroundColor: StaticColors.neutral[50], // Overridden inline when nightMode is active
     },
-    header: {
-        // backgroundColor moved to inline style for dynamic color
+
+    // ── Minimal Glass Header ──
+    headerOuter: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+    },
+    headerInner: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: Spacing.lg,
-        paddingTop: Spacing['3xl'],
-        zIndex: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
-    backButton: {
-        padding: Spacing.sm,
+    headerBtn: {
+        padding: 10,
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    headerInfo: {
+    headerCenter: {
         flex: 1,
         alignItems: 'center',
-        marginHorizontal: Spacing.sm,
-    },
-    headerActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    iconButton: {
-        padding: Spacing.xs,
-        marginEnd: Spacing.sm,  // RTL-safe (was marginLeft)
+        marginHorizontal: 4,
     },
     headerTitle: {
-        fontSize: Typography.fontSize['xl'], // Smaller title
-        fontWeight: Typography.fontWeight.bold,
-        color: StaticColors.text.inverse,
+        fontSize: 18,
+        fontWeight: '700',
     },
     headerSubtitle: {
-        fontSize: Typography.fontSize.sm,
-        color: StaticColors.neutral[300],
+        fontSize: 12,
+        fontWeight: '500',
+        marginTop: 1,
     },
+
+    // ── Content ──
     content: {
         flex: 1,
-        backgroundColor: StaticColors.neutral[50],
-        // Padding removed - UnifiedAudioControl handles its own positioning
     },
+
+    // ── Footer Wrapper (absolute, touch-transparent) ──
+    footerWrapper: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+    },
+
+    // ── Range Selector ──
     compactRangeContainer: {
-        paddingHorizontal: Spacing.md,
-        paddingTop: Spacing.sm,
-        paddingBottom: Spacing.xs,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        paddingHorizontal: 16,
+        paddingTop: 6,
+        paddingBottom: 4,
+    },
+    rangeSelectorCard: {
+        borderRadius: 16,
+        padding: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
     },
     compactRangeButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.lg,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 14,
         borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        elevation: 3,
     },
     compactRangeText: {
-        fontSize: Typography.fontSize.sm,
-        color: StaticColors.neutral[200],
-        fontWeight: Typography.fontWeight.medium,
+        fontSize: 13,
+        fontWeight: '600',
     },
     expandText: {
-        fontSize: Typography.fontSize.xs,
-        fontWeight: Typography.fontWeight.bold,
+        fontSize: 11,
+        fontWeight: '700',
     },
     collapseButton: {
         alignItems: 'center',
-        paddingVertical: Spacing.xs,
-        marginTop: Spacing.xs,
+        paddingVertical: 6,
+        marginTop: 4,
     },
     collapseButtonText: {
-        fontSize: Typography.fontSize.xs,
-        color: StaticColors.neutral[400],
+        fontSize: 12,
+        fontWeight: '500',
     },
     learningModeToggle: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        paddingVertical: Spacing.sm,
-        paddingHorizontal: Spacing.md,
-        borderRadius: BorderRadius.md,
-        marginTop: Spacing.sm,
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        marginTop: 8,
         alignItems: 'center',
         borderWidth: 1,
     },
     learningModeText: {
-        fontSize: Typography.fontSize.sm,
-        fontWeight: Typography.fontWeight.semibold,
-        color: StaticColors.neutral[300],
+        fontSize: 13,
+        fontWeight: '600',
+        color: SANCTUARY.text.secondary,
     },
-    // ── Integrated Action Bar (replaces floating FABs) ──
+
+    // ── Floating Action Bar (closed state) ──
     actionBar: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.08)',
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        gap: Spacing.md,
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 28,
+        paddingHorizontal: 8,
+        paddingVertical: 8,
+        gap: 8,
+        zIndex: 50,
+        // Elevation
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 14,
     },
     actionBarButton: {
         flex: 1,
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        gap: Spacing.sm,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.xl,
-        borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        paddingVertical: 16,
+        borderRadius: 22,
+        minHeight: 52,
     },
     actionBarButtonText: {
-        fontSize: Typography.fontSize.sm,
-        fontWeight: Typography.fontWeight.semibold,
+        fontSize: 15,
+        fontWeight: '700',
+        letterSpacing: 0.3,
     },
-    actionBarDivider: {
-        width: 1,
-        height: 28,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-    },
-    // Loading & Error States
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
+
+    // ── Loading & Error ──
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: Spacing['3xl'],
-        backgroundColor: StaticColors.neutral[950],
+        padding: 40,
     },
     loadingText: {
         marginTop: Spacing.md,
-        fontSize: Typography.fontSize.base,
-        color: StaticColors.gold[700],
-        fontWeight: Typography.fontWeight.semibold,
+        fontSize: 15,
+        fontWeight: '600',
     },
     errorContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: Spacing['3xl'],
-        backgroundColor: StaticColors.neutral[950],
+        padding: 40,
     },
     errorText: {
         marginTop: Spacing.lg,
-        fontSize: Typography.fontSize.base,
+        fontSize: 15,
         color: StaticColors.error,
         textAlign: 'center',
         marginBottom: Spacing.xl,
     },
     retryButton: {
-        backgroundColor: StaticColors.emerald[950],
         paddingHorizontal: Spacing.xl,
         paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.lg,
+        borderRadius: 16,
     },
     retryButtonText: {
-        fontSize: Typography.fontSize.base,
-        fontWeight: Typography.fontWeight.bold,
-        color: StaticColors.text.inverse,
-    },
-
-    // Settings Modal Styles
-    settingsModal: {
-        backgroundColor: '#ffffff',
-        width: '80%',
-        alignSelf: 'center',
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.xl,
-        marginTop: 'auto',
-        marginBottom: 'auto',
-        ...Shadows.xl,
-    },
-    settingsTitle: {
-        fontSize: Typography.fontSize.xl,
-        fontWeight: Typography.fontWeight.bold,
-        marginBottom: Spacing.lg,
-        textAlign: 'center',
-    },
-    settingRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: Spacing.lg,
-    },
-    settingLabel: {
-        fontSize: Typography.fontSize.base,
-        fontWeight: Typography.fontWeight.medium,
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#fff',
     },
 });
 
