@@ -13,128 +13,52 @@ import { X, Check, Music } from 'lucide-react-native';
 import { RECITERS_LIBRARY, Reciter, getRecitersByQiraat } from '../../lib/audio-reciters';
 import Card from '../ui/Card';
 
-interface ReciterSelectionModalProps {
-    visible: boolean;
-    onClose: () => void;
+// ── Memoised reciter row ─────────────────────────────────────────────────────
+interface ReciterItemProps {
+    item: Reciter;
+    isSelected: boolean;
     onSelect: (reciter: Reciter) => void;
-    currentReciterId?: string;
-    qiraat?: 'Hafs' | 'Warsh' | 'Qaloon';
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-
-export default function ReciterSelectionModal({
-    visible,
-    onClose,
-    onSelect,
-    currentReciterId,
-    qiraat = 'Hafs',
-}: ReciterSelectionModalProps) {
-    // Filter to ayah-by-ayah reciters only — the engine doesn't support
-    // gapless (surah-level) playback yet (requires timing DB + seekTo).
-    const reciters = (qiraat ? getRecitersByQiraat(qiraat) : RECITERS_LIBRARY)
-        .filter(r => r.audioType === 'ayah');
-
-    function handleSelect(reciter: Reciter) {
-        onSelect(reciter);
-        onClose();
-    }
+const ReciterItem = React.memo(function ReciterItem(
+    { item, isSelected, onSelect }: ReciterItemProps,
+) {
+    const handlePress = React.useCallback(() => onSelect(item), [onSelect, item]);
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            presentationStyle="pageSheet"
-            onRequestClose={onClose}
+        <Card
+            style={[
+                reciterItemStyles.reciterCard,
+                isSelected && reciterItemStyles.reciterCardSelected,
+            ]}
+            variant="glass"
+            onPress={handlePress}
         >
-            {/* Force dark background on all platforms so text is always readable */}
-            <View style={styles.container}>
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <Music size={24} color={Colors.gold[400]} />
-                        <Text style={styles.headerTitle}>Select Reciter</Text>
+            <View style={reciterItemStyles.reciterInfo}>
+                <Text style={reciterItemStyles.reciterName}>{item.name}</Text>
+                <Text style={reciterItemStyles.reciterNameArabic}>{item.nameArabic}</Text>
+                <View style={reciterItemStyles.badges}>
+                    <View style={reciterItemStyles.badge}>
+                        <Text style={reciterItemStyles.badgeText}>{item.qiraat}</Text>
                     </View>
-                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                        <X size={24} color={Colors.text.inverse} />
-                    </TouchableOpacity>
+                    <View style={reciterItemStyles.badge}>
+                        <Text style={reciterItemStyles.badgeText}>{item.style}</Text>
+                    </View>
+                    <View style={reciterItemStyles.badge}>
+                        <Text style={reciterItemStyles.badgeText}>{item.quality}</Text>
+                    </View>
                 </View>
-
-                <FlatList
-                    data={reciters}
-                    keyExtractor={item => item.id}
-                    contentContainerStyle={styles.list}
-                    renderItem={({ item }) => {
-                        const isSelected = item.id === currentReciterId;
-                        return (
-                            <Card
-                                style={[
-                                    styles.reciterCard,
-                                    isSelected && styles.reciterCardSelected,
-                                ]}
-                                variant="glass"
-                                onPress={() => handleSelect(item)}
-                            >
-                                <View style={styles.reciterInfo}>
-                                    <Text style={styles.reciterName}>{item.name}</Text>
-                                    <Text style={styles.reciterNameArabic}>{item.nameArabic}</Text>
-                                    <View style={styles.badges}>
-                                        <View style={styles.badge}>
-                                            <Text style={styles.badgeText}>{item.qiraat}</Text>
-                                        </View>
-                                        <View style={styles.badge}>
-                                            <Text style={styles.badgeText}>{item.style}</Text>
-                                        </View>
-                                        <View style={styles.badge}>
-                                            <Text style={styles.badgeText}>{item.quality}</Text>
-                                        </View>
-                                    </View>
-                                </View>
-                                {isSelected && (
-                                    <View style={styles.checkmark}>
-                                        <Check size={20} color={Colors.emerald[950]} />
-                                    </View>
-                                )}
-                            </Card>
-                        );
-                    }}
-                />
             </View>
-        </Modal>
+            {isSelected && (
+                <View style={reciterItemStyles.checkmark}>
+                    <Check size={20} color={Colors.emerald[950]} />
+                </View>
+            )}
+        </Card>
     );
-}
+});
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        // Force a consistent dark background on both Android and iOS (pageSheet)
-        backgroundColor: '#0d1117',
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.xl,
-        paddingVertical: Spacing.lg,
-        paddingTop: Spacing['2xl'],
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-    },
-    headerTitle: {
-        fontSize: Typography.fontSize.xl,
-        fontWeight: Typography.fontWeight.bold,
-        color: Colors.text.inverse,
-    },
-    closeButton: {
-        padding: Spacing.xs,
-    },
-    list: {
-        padding: Spacing.lg,
-    },
+const reciterItemStyles = StyleSheet.create({
     reciterCard: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -186,4 +110,111 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginLeft: Spacing.md,
     },
+});
+
+interface ReciterSelectionModalProps {
+    visible: boolean;
+    onClose: () => void;
+    onSelect: (reciter: Reciter) => void;
+    currentReciterId?: string;
+    qiraat?: 'Hafs' | 'Warsh' | 'Qaloon';
+}
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+export default function ReciterSelectionModal({
+    visible,
+    onClose,
+    onSelect,
+    currentReciterId,
+    qiraat = 'Hafs',
+}: ReciterSelectionModalProps) {
+    // Filter to ayah-by-ayah reciters only — the engine doesn't support
+    // gapless (surah-level) playback yet (requires timing DB + seekTo).
+    const reciters = (qiraat ? getRecitersByQiraat(qiraat) : RECITERS_LIBRARY)
+        .filter(r => r.audioType === 'ayah');
+
+    const handleSelect = React.useCallback((reciter: Reciter) => {
+        onSelect(reciter);
+        onClose();
+    }, [onSelect, onClose]);
+
+    const renderReciter = React.useCallback(
+        ({ item }: { item: Reciter }) => (
+            <ReciterItem
+                item={item}
+                isSelected={item.id === currentReciterId}
+                onSelect={handleSelect}
+            />
+        ),
+        [currentReciterId, handleSelect],
+    );
+
+    return (
+        <Modal
+            visible={visible}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={onClose}
+        >
+            {/* Force dark background on all platforms so text is always readable */}
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <View style={styles.headerLeft}>
+                        <Music size={24} color={Colors.gold[400]} />
+                        <Text style={styles.headerTitle}>Select Reciter</Text>
+                    </View>
+                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                        <X size={24} color={Colors.text.inverse} />
+                    </TouchableOpacity>
+                </View>
+
+                <FlatList
+                    data={reciters}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.list}
+                    renderItem={renderReciter}
+                    removeClippedSubviews={true}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={5}
+                    windowSize={5}
+                />
+            </View>
+        </Modal>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        // Force a consistent dark background on both Android and iOS (pageSheet)
+        backgroundColor: '#0d1117',
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.lg,
+        paddingTop: Spacing['2xl'],
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    headerTitle: {
+        fontSize: Typography.fontSize.xl,
+        fontWeight: Typography.fontWeight.bold,
+        color: Colors.text.inverse,
+    },
+    closeButton: {
+        padding: Spacing.xs,
+    },
+    list: {
+        padding: Spacing.lg,
+    },
+
 });

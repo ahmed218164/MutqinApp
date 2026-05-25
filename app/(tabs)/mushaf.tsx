@@ -73,7 +73,8 @@ const ringStyles = StyleSheet.create({
 });
 
 // ── Frosted-glass Surah Row ────────────────────────────────────────────────────
-const SurahRow = React.memo(function SurahRow({ item, index, onPress }: { item: Surah; index: number; onPress: () => void }) {
+const SurahRow = React.memo(function SurahRow({ item, index, onPress }: { item: Surah; index: number; onPress: (surah: Surah) => void }) {
+    const handlePress = React.useCallback(() => onPress(item), [onPress, item]);
     const scaleVal = useSharedValue(1);
     const opacity = useSharedValue(0);
     const translateX = useSharedValue(-12);
@@ -105,7 +106,7 @@ const SurahRow = React.memo(function SurahRow({ item, index, onPress }: { item: 
     return (
         <Animated.View style={[rowStyles.wrapper, animStyle, pressStyle]}>
             <TouchableOpacity
-                onPress={onPress}
+                onPress={handlePress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 activeOpacity={1}
@@ -269,7 +270,7 @@ export default function MushafScreen() {
         }
     }
 
-    function handleSurahPress(surah: Surah) {
+    const handleSurahPress = React.useCallback((surah: Surah) => {
         router.push({
             pathname: '/recite',
             params: {
@@ -278,7 +279,7 @@ export default function MushafScreen() {
                 verses: surah.verses,
             },
         });
-    }
+    }, [router]);
 
     function handleSearchResultPress(result: SearchJumpTarget) {
         // Navigate to the recite screen at the specific surah
@@ -294,15 +295,30 @@ export default function MushafScreen() {
         });
     }
 
-    function renderSurah({ item, index }: { item: Surah; index: number }) {
-        return (
+    // ── FlatList optimisation constants ──────────────────────────────────
+    // SurahRow height: paddingVertical(14*2) + arabicName(~20) + transliteration(~19)
+    // + metaRow(~14) + wrapper borderWidth(1*2) = ~81px content + 8px marginBottom
+    const SURAH_ITEM_HEIGHT = 89;
+
+    const getItemLayout = React.useCallback(
+        (_data: any, index: number) => ({
+            length: SURAH_ITEM_HEIGHT,
+            offset: SURAH_ITEM_HEIGHT * index,
+            index,
+        }),
+        [],
+    );
+
+    const renderSurah = React.useCallback(
+        ({ item, index }: { item: Surah; index: number }) => (
             <SurahRow
                 item={item}
                 index={index}
-                onPress={() => handleSurahPress(item)}
+                onPress={handleSurahPress}
             />
-        );
-    }
+        ),
+        [handleSurahPress],
+    );
 
     return (
         <View style={styles.container}>
@@ -394,11 +410,12 @@ export default function MushafScreen() {
                         data={filteredSurahs}
                         renderItem={renderSurah}
                         keyExtractor={(item: Surah) => item.number.toString()}
+                        getItemLayout={getItemLayout}
                         contentContainerStyle={styles.listContent}
                         showsVerticalScrollIndicator={false}
-                        initialNumToRender={14}
-                        maxToRenderPerBatch={10}
-                        windowSize={7}
+                        initialNumToRender={12}
+                        maxToRenderPerBatch={5}
+                        windowSize={5}
                         removeClippedSubviews={true}
                         onScroll={scrollHandler}
                         scrollEventThrottle={16}

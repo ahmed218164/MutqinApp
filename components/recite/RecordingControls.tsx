@@ -107,6 +107,25 @@ export default function RecordingControls({
         transform: [{ scale: pulseScale.value }],
     }));
 
+    // ── Waveform bars driven by Reanimated SharedValue (no React re-renders) ──
+    // IMPORTANT: Hoisted above all early returns so the hook call count is
+    // identical on every render (Rules of Hooks).
+    const WaveformBars = React.useCallback(() => {
+        if (!meterHistoryShared) return null;
+        return (
+            <View style={styles.waveformContainer}>
+                {new Array(WAVEFORM_BAR_COUNT).fill(0).map((_, i) => (
+                    <AnimatedWaveformBar
+                        key={i}
+                        index={i}
+                        meterHistoryShared={meterHistoryShared}
+                        accentColor={accentColor}
+                    />
+                ))}
+            </View>
+        );
+    }, [meterHistoryShared, accentColor]);
+
     const handleRecordPress = () => {
         mediumImpact();
         if (recording) {
@@ -209,23 +228,6 @@ export default function RecordingControls({
             </View>
         );
     }
-
-    // ── Waveform bars driven by Reanimated SharedValue (no React re-renders) ──
-    const WaveformBars = React.useCallback(() => {
-        if (!meterHistoryShared) return null;
-        return (
-            <View style={styles.waveformContainer}>
-                {new Array(WAVEFORM_BAR_COUNT).fill(0).map((_, i) => (
-                    <AnimatedWaveformBar
-                        key={i}
-                        index={i}
-                        meterHistoryShared={meterHistoryShared}
-                        accentColor={accentColor}
-                    />
-                ))}
-            </View>
-        );
-    }, [meterHistoryShared, accentColor]);
 
     // ── Main recording / idle UI ─────────────────────────────────────────────
     return (

@@ -34,6 +34,91 @@ interface ReciterBottomSheetProps {
 
 type AudioTab = 'gapless' | 'ayah';
 
+// ── Constants for FlatList optimisation ──────────────────────────────────────
+// Declared at module level so they are never re-created on re-render.
+
+/**
+ * Fixed height of each reciter card:
+ *   padding (14×2=28) + border (1.5×2=3) + avatar height (44) + marginBottom (8) = 83
+ */
+const ITEM_HEIGHT = 83;
+
+/** Stable keyExtractor — avoids a new function object on every render. */
+const keyExtractor = (item: Reciter) => item.id;
+
+/**
+ * Stable getItemLayout — lets VirtualizedList skip measurement on every scroll
+ * frame because all rows have the same fixed height.
+ */
+const getItemLayout = (_: ArrayLike<Reciter> | null | undefined, index: number) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+});
+
+// ── Memoised row ─────────────────────────────────────────────────────────────
+// Extracted so VirtualizedList can skip re-renders when props are unchanged.
+
+interface ReciterItemProps {
+    item: Reciter;
+    isSelected: boolean;
+    onSelect: (reciter: Reciter) => void;
+}
+
+const ReciterItem = React.memo<ReciterItemProps>(function ReciterItem({
+    item,
+    isSelected,
+    onSelect,
+}: ReciterItemProps) {
+    // Stable press handler — useCallback keeps referential equality so
+    // React.memo can bail out even when the parent re-renders.
+    const handlePress = React.useCallback(() => onSelect(item), [item, onSelect]);
+
+    return (
+        <TouchableOpacity
+            style={[styles.reciterCard, isSelected && styles.reciterCardSelected]}
+            onPress={handlePress}
+            activeOpacity={0.7}
+        >
+            {/* Avatar circle with initial */}
+            <View style={[
+                styles.avatar,
+                isSelected && { backgroundColor: Colors.emerald[500] },
+            ]}>
+                <Text style={[
+                    styles.avatarText,
+                    isSelected && { color: '#fff' },
+                ]}>
+                    {item.nameArabic.charAt(0)}
+                </Text>
+            </View>
+
+            <View style={styles.reciterInfo}>
+                <Text style={styles.reciterName} numberOfLines={1}>
+                    {item.nameArabic}
+                </Text>
+                <Text style={styles.reciterSubName} numberOfLines={1}>
+                    {item.name}
+                </Text>
+                <View style={styles.badges}>
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{item.style}</Text>
+                    </View>
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{item.quality}</Text>
+                    </View>
+                </View>
+            </View>
+
+            {isSelected && (
+                <View style={styles.checkmark}>
+                    <Check size={18} color="#fff" />
+                </View>
+            )}
+        </TouchableOpacity>
+    );
+});
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ReciterBottomSheet({
@@ -82,58 +167,24 @@ export default function ReciterBottomSheet({
         [],
     );
 
-    // ── FIX: handleSelect uses the ref so it never goes stale ─────────────
+    // handleSelect uses the ref so it never goes stale
     const handleSelect = React.useCallback((reciter: Reciter) => {
         onSelectRef.current(reciter);
         sheetRef.current?.dismiss();
     }, [sheetRef]);
 
-    const renderReciterItem = React.useCallback(({ item }: { item: Reciter }) => {
-        const isSelected = item.id === currentReciterId;
-        return (
-            <TouchableOpacity
-                style={[styles.reciterCard, isSelected && styles.reciterCardSelected]}
-                onPress={() => handleSelect(item)}
-                activeOpacity={0.7}
-            >
-                {/* Avatar circle with initial */}
-                <View style={[
-                    styles.avatar,
-                    isSelected && { backgroundColor: Colors.emerald[500] },
-                ]}>
-                    <Text style={[
-                        styles.avatarText,
-                        isSelected && { color: '#fff' },
-                    ]}>
-                        {item.nameArabic.charAt(0)}
-                    </Text>
-                </View>
+    // Stable dismiss handler for the close button
+    const handleDismiss = React.useCallback(() => {
+        sheetRef.current?.dismiss();
+    }, [sheetRef]);
 
-                <View style={styles.reciterInfo}>
-                    <Text style={styles.reciterName} numberOfLines={1}>
-                        {item.nameArabic}
-                    </Text>
-                    <Text style={styles.reciterSubName} numberOfLines={1}>
-                        {item.name}
-                    </Text>
-                    <View style={styles.badges}>
-                        <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{item.style}</Text>
-                        </View>
-                        <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{item.quality}</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {isSelected && (
-                    <View style={styles.checkmark}>
-                        <Check size={18} color="#fff" />
-                    </View>
-                )}
-            </TouchableOpacity>
-        );
-    }, [currentReciterId, handleSelect]);
+    const renderReciterItem = React.useCallback(({ item }: { item: Reciter }) => (
+        <ReciterItem
+            item={item}
+            isSelected={item.id === currentReciterId}
+            onSelect={handleSelect}
+        />
+    ), [currentReciterId, handleSelect]);
 
     return (
         <BottomSheetModal
@@ -151,7 +202,7 @@ export default function ReciterBottomSheet({
                     <Text style={styles.headerTitle}>اختر القارئ</Text>
                 </View>
                 <TouchableOpacity
-                    onPress={() => sheetRef.current?.dismiss()}
+                    onPress={handleDismiss}
                     style={styles.closeButton}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -211,10 +262,15 @@ export default function ReciterBottomSheet({
             {/* Reciter list */}
             <BottomSheetFlatList
                 data={currentList}
-                keyExtractor={item => item.id}
+                keyExtractor={keyExtractor}
                 renderItem={renderReciterItem}
+                getItemLayout={getItemLayout}
                 contentContainerStyle={styles.list}
                 showsVerticalScrollIndicator={false}
+                removeClippedSubviews={true}
+                initialNumToRender={10}
+                maxToRenderPerBatch={5}
+                windowSize={5}
             />
         </BottomSheetModal>
     );

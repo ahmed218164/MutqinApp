@@ -83,6 +83,49 @@ function HighlightedText({ rawText, normalizedQuery }: { rawText: string; normal
 const SEARCH_LIMIT = 60;
 const SEARCH_DEBOUNCE_MS = 300;
 
+// resultCard: padding(12*2) + resultHeader(~20 + marginBottom 8) + ayahText(~32)
+// + marginTop between cards(8) = ~92px
+const SEARCH_RESULT_ITEM_HEIGHT = 92;
+
+// ── Memoised search result item ───────────────────────────────────────────────
+
+interface SearchResultItemProps {
+    item: AyatRow;
+    normalizedQuery: string;
+    onPress: (item: AyatRow) => void;
+}
+
+const SearchResultItem = React.memo(function SearchResultItem(
+    { item, normalizedQuery, onPress }: SearchResultItemProps,
+) {
+    const handlePress = React.useCallback(() => onPress(item), [onPress, item]);
+    const surahName = SURAHS[item.sura - 1]?.name ?? `سورة ${item.sura}`;
+
+    return (
+        <TouchableOpacity
+            style={styles.resultCard}
+            onPress={handlePress}
+            activeOpacity={0.7}
+        >
+            {/* Card header */}
+            <View style={styles.resultHeader}>
+                <Text style={styles.surahName}>{surahName}</Text>
+                <View style={styles.ayahBadge}>
+                    <Text style={styles.ayahBadgeText}>
+                        {item.sura}:{item.aya}  ·  ص {item.page}
+                    </Text>
+                </View>
+            </View>
+
+            {/* Ayah text with highlight */}
+            <HighlightedText
+                rawText={item.text ?? ''}
+                normalizedQuery={normalizedQuery}
+            />
+        </TouchableOpacity>
+    );
+});
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function SearchModal({ visible, db, onClose, onResultPress }: SearchModalProps) {
@@ -139,14 +182,34 @@ export default function SearchModal({ visible, db, onClose, onResultPress }: Sea
         setShowFilters(false);
     }
 
-    function handleResultPress(item: AyatRow) {
+    const handleResultPress = React.useCallback((item: AyatRow) => {
         onResultPress({ surah: item.sura, ayah: item.aya, page: item.page });
         handleClose();
-    }
+    }, [onResultPress]);
+
+    const getItemLayout = React.useCallback(
+        (_data: any, index: number) => ({
+            length: SEARCH_RESULT_ITEM_HEIGHT,
+            offset: SEARCH_RESULT_ITEM_HEIGHT * index,
+            index,
+        }),
+        [],
+    );
 
     const normalizedQuery = normalizeArabic(query.trim());
     const hasQuery = query.trim().length >= 2;
     const activeFilters = (suraFilter != null ? 1 : 0) + (juzFilter != null ? 1 : 0);
+
+    const renderResultItem = React.useCallback(
+        ({ item }: { item: AyatRow }) => (
+            <SearchResultItem
+                item={item}
+                normalizedQuery={normalizedQuery}
+                onPress={handleResultPress}
+            />
+        ),
+        [normalizedQuery, handleResultPress],
+    );
 
     return (
         <Modal
@@ -270,32 +333,12 @@ export default function SearchModal({ visible, db, onClose, onResultPress }: Sea
                     keyExtractor={item => `${item.sura}-${item.aya}`}
                     contentContainerStyle={styles.resultsList}
                     keyboardShouldPersistTaps="handled"
-                    renderItem={({ item }) => {
-                        const surahName = SURAHS[item.sura - 1]?.name ?? `سورة ${item.sura}`;
-                        return (
-                            <TouchableOpacity
-                                style={styles.resultCard}
-                                onPress={() => handleResultPress(item)}
-                                activeOpacity={0.7}
-                            >
-                                {/* Card header */}
-                                <View style={styles.resultHeader}>
-                                    <Text style={styles.surahName}>{surahName}</Text>
-                                    <View style={styles.ayahBadge}>
-                                        <Text style={styles.ayahBadgeText}>
-                                            {item.sura}:{item.aya}  ·  ص {item.page}
-                                        </Text>
-                                    </View>
-                                </View>
-
-                                {/* Ayah text with highlight */}
-                                <HighlightedText
-                                    rawText={item.text ?? ''}
-                                    normalizedQuery={normalizedQuery}
-                                />
-                            </TouchableOpacity>
-                        );
-                    }}
+                    renderItem={renderResultItem}
+                    getItemLayout={getItemLayout}
+                    removeClippedSubviews={true}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={5}
+                    windowSize={5}
                     ListEmptyComponent={
                         hasQuery && !isLoading ? (
                             <View style={styles.emptyState}>
