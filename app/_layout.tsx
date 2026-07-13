@@ -25,7 +25,13 @@ import { PlaybackService } from '../lib/playback-service';
 // Register the RNTP background service.
 // Must be called at module level (before any component renders).
 // Safe to call multiple times — RNTP is idempotent here.
-TrackPlayer.registerPlaybackService(() => PlaybackService);
+const globalWithTrackPlayer = globalThis as typeof globalThis & {
+    __MUTQIN_TRACK_PLAYER_SERVICE_REGISTERED__?: boolean;
+};
+if (!globalWithTrackPlayer.__MUTQIN_TRACK_PLAYER_SERVICE_REGISTERED__) {
+    TrackPlayer.registerPlaybackService(() => PlaybackService);
+    globalWithTrackPlayer.__MUTQIN_TRACK_PLAYER_SERVICE_REGISTERED__ = true;
+}
 
 // Keep the splash screen visible while fonts are loading
 SplashScreen.preventAutoHideAsync();

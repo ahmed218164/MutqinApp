@@ -1,9 +1,9 @@
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     RefreshControl,
     Alert,
@@ -231,8 +231,6 @@ export default function MistakesScreen() {
                         <FlashList
                             data={mistakes}
                             renderItem={renderMistake}
-                            // @ts-ignore
-                            estimatedItemSize={200}
                             keyExtractor={(item) => item.id}
                             contentContainerStyle={styles.listContent}
                             showsVerticalScrollIndicator={false}

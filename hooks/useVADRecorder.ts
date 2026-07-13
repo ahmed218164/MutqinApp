@@ -3,7 +3,7 @@
  * ──────────────────────────────────────────────────────────────────────────────
  * VAD (Voice Activity Detection) Continuous Chunking Recorder
  *
- * Reads audio metering (dB) from expo-av every 100ms. When the level drops
+ * Reads audio metering (dB) from expo-audio every 100ms. When the level drops
  * below SILENCE_THRESHOLD_DB for SILENCE_DURATION_MS, the current recording
  * is stopped, sent to the Muaalem API in the background, and a new recording
  * starts instantly so the user can continue without interruption.
@@ -17,7 +17,15 @@
  */
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Audio } from 'expo-av';
+import {
+    AudioQuality,
+    IOSOutputFormat,
+    requestRecordingPermissionsAsync,
+    setAudioModeAsync,
+    useAudioRecorder,
+    type AudioRecorder,
+    type RecordingOptions,
+} from 'expo-audio';
 import { Alert } from 'react-native';
 import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake, AyahRange } from '../lib/muaalem-api';
 import { mediumImpact } from '../lib/haptics';
@@ -36,6 +44,33 @@ const METERING_INTERVAL_MS = 100;
 
 /** Minimum chunk duration in ms before we bother analysing it */
 const MIN_CHUNK_DURATION_MS = 3000;
+
+const RECORDING_OPTIONS: RecordingOptions = {
+    isMeteringEnabled: true,
+    extension: '.m4a',
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    android: {
+        extension: '.m4a',
+        outputFormat: 'mpeg4',
+        audioEncoder: 'aac',
+        sampleRate: 16000,
+    },
+    ios: {
+        extension: '.wav',
+        outputFormat: IOSOutputFormat.LINEARPCM,
+        audioQuality: AudioQuality.HIGH,
+        sampleRate: 16000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+    },
+    web: {
+        mimeType: 'audio/webm',
+        bitsPerSecond: 128000,
+    },
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +120,7 @@ const HISTORY_SIZE = 20;
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): UseVADRecorderReturn {
+    const recorder = useAudioRecorder(RECORDING_OPTIONS);
     // ── State ────────────────────────────────────────────────────────────────
     const [state, setState] = useState<VADRecorderState>({
         isSessionActive: false,
@@ -100,7 +136,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     const meterHistoryShared = useSharedValue<number[]>(new Array(HISTORY_SIZE).fill(0));
 
     // ── Refs (mutable across renders) ────────────────────────────────────────
-    const recordingRef = useRef<Audio.Recording | null>(null);
+    const recordingRef = useRef<AudioRecorder | null>(null);
     const meteringTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const silenceStartRef = useRef<number | null>(null);
@@ -125,7 +161,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
             mountedRef.current = false;
             clearTimers();
             if (recordingRef.current) {
-                recordingRef.current.stopAndUnloadAsync().catch(() => {});
+                recordingRef.current.stop().catch(() => {});
             }
         };
     }, []);
@@ -143,7 +179,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         }
     }
 
-    // ── Create a new expo-av recording with metering enabled ─────────────────
+    // ── Create a new expo-audio recording with metering enabled ─────────────────
     //
     // IMPORTANT: Android's MediaRecorder does NOT natively support WAV output.
     // Setting extension='.wav' on Android with DEFAULT encoder produces a broken
@@ -151,56 +187,54 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     // which librosa/ffmpeg on the backend handles perfectly.
     // iOS supports true Linear PCM WAV natively.
 
-    async function createRecording(): Promise<Audio.Recording> {
-        const RECORDING_OPTIONS: Audio.RecordingOptions = {
-            isMeteringEnabled: true,
-            android: {
-                extension: '.m4a',
-                outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-                audioEncoder: Audio.AndroidAudioEncoder.AAC,
-                sampleRate: 16000,
-                numberOfChannels: 1,
-                bitRate: 128000,
-            },
-            ios: {
-                extension: '.wav',
-                audioQuality: Audio.IOSAudioQuality.HIGH,
-                sampleRate: 16000,
-                numberOfChannels: 1,
-                bitRate: 128000,
-                linearPCMBitDepth: 16,
-                linearPCMIsBigEndian: false,
-                linearPCMIsFloat: false,
-            },
-            web: {
-                mimeType: 'audio/webm',
-                bitsPerSecond: 128000,
-            },
-        };
-
-        const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
-        return recording;
+    async function createRecording(): Promise<AudioRecorder> {
+        await recorder.prepareToRecordAsync(RECORDING_OPTIONS);
+        recorder.record();
+        return recorder;
     }
-
     // ── Start metering poller ────────────────────────────────────────────────
 
     function startMeteringPoller() {
         meteringTimerRef.current = setInterval(async () => {
-            if (!recordingRef.current || !sessionActiveRef.current) return;
+            if (!recordingRef.current || !sessionActiveRef.current || isFinishingRef.current) return;
 
             try {
-                const status = await recordingRef.current.getStatusAsync();
+                const status = recordingRef.current.getStatus();
                 if (!status.isRecording) return;
 
                 const db = status.metering ?? -160;
                 const normalised = normaliseMeter(db);
 
-                // Mutate shared values directly — no React setState, no re-render
+                // ── Update Reanimated shared values (zero React re-renders) ──
                 meterLevelShared.value = normalised;
                 meterHistoryShared.value = [
                     ...meterHistoryShared.value.slice(1),
                     normalised,
                 ];
+
+                // ── VAD: Silence detection → auto-split ───────────────────
+                const now = Date.now();
+                if (db < SILENCE_THRESHOLD_DB) {
+                    // Below threshold — start or continue silence window
+                    if (silenceStartRef.current === null) {
+                        silenceStartRef.current = now;
+                    } else if (now - silenceStartRef.current >= SILENCE_DURATION_MS) {
+                        // Silence has lasted long enough — check minimum chunk length
+                        const chunkDuration = now - chunkStartTimeRef.current;
+                        if (chunkDuration >= MIN_CHUNK_DURATION_MS) {
+                            // Reset before the async call to prevent double-triggering
+                            silenceStartRef.current = null;
+                            // splitChunk is async but we do NOT await it here so the
+                            // setInterval callback returns immediately (non-blocking).
+                            splitChunk().catch(err =>
+                                console.error('[VAD] Auto-split error:', err)
+                            );
+                        }
+                    }
+                } else {
+                    // Above threshold — voice detected, reset silence window
+                    silenceStartRef.current = null;
+                }
             } catch (err) {
                 console.warn('[VAD] Metering poll error:', err);
             }
@@ -217,11 +251,11 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
 
         try {
             // Stop current
-            const status = await currentRecording.getStatusAsync();
+            const status = currentRecording.getStatus();
             if (status.isRecording || status.canRecord) {
-                await currentRecording.stopAndUnloadAsync();
+                await currentRecording.stop();
             }
-            const uri = currentRecording.getURI();
+            const uri = currentRecording.uri;
 
             // Start new recording immediately (zero gap for the user)
             if (sessionActiveRef.current && !isFinishingRef.current) {
@@ -276,15 +310,15 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         try {
             mediumImpact();
 
-            const permission = await Audio.requestPermissionsAsync();
+            const permission = await requestRecordingPermissionsAsync();
             if (!permission.granted) {
                 Alert.alert('إذن مطلوب', 'يرجى السماح بالوصول إلى الميكروفون');
                 return;
             }
 
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
+            await setAudioModeAsync({
+                allowsRecording: true,
+                playsInSilentMode: true,
             });
 
             // Reset state
@@ -341,36 +375,53 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
 
         clearTimers();
 
-        // Stop current recording and send as final chunk
+        // Stop current recording and send as final chunk (fire-and-forget — no blocking await)
         if (recordingRef.current) {
             try {
                 const currentRecording = recordingRef.current;
                 recordingRef.current = null;
 
-                const status = await currentRecording.getStatusAsync();
+                const status = currentRecording.getStatus();
                 if (status.isRecording || status.canRecord) {
-                    await currentRecording.stopAndUnloadAsync();
+                    await currentRecording.stop();
                 }
-                const uri = currentRecording.getURI();
+                const uri = currentRecording.uri;
 
                 if (uri) {
-                    // Always send the final chunk when user explicitly clicks Finish, 
-                    // even if it's shorter than MIN_CHUNK_DURATION_MS, to ensure we get 
-                    // the full recorded buffer and don't discard the final words.
+                    // Always send the final chunk even if shorter than MIN_CHUNK_DURATION_MS
+                    // so we never discard the user's last words.
                     const idx = chunkIndexRef.current++;
                     const chunkEntry: ChunkResult = { index: idx, assessment: null, processing: true };
                     chunkResultsRef.current.push(chunkEntry);
 
-                    setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
-
-                    try {
-                        const assessment = await checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current);
-                        chunkEntry.assessment = assessment;
-                        chunkEntry.processing = false;
-                    } catch (err) {
-                        chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع الأخير' };
-                        chunkEntry.processing = false;
+                    if (mountedRef.current) {
+                        setState(prev => ({ ...prev, chunksSent: prev.chunksSent + 1 }));
                     }
+
+                    // ⚠️  Fire-and-forget: do NOT await — the setInterval poller below
+                    // will detect when processing === false without blocking the JS thread.
+                    checkRecitationWithMuaalem(uri, referenceTextRef.current, ayahRangeRef.current)
+                        .then(assessment => {
+                            chunkEntry.assessment = assessment;
+                            chunkEntry.processing = false;
+                            if (mountedRef.current) {
+                                setState(prev => ({
+                                    ...prev,
+                                    chunksCompleted: prev.chunksCompleted + 1,
+                                }));
+                            }
+                        })
+                        .catch(err => {
+                            console.error('[VAD] Final chunk analysis failed:', err);
+                            chunkEntry.assessment = { score: 0, mistakes: [], error: 'فشل تحليل المقطع الأخير' };
+                            chunkEntry.processing = false;
+                            if (mountedRef.current) {
+                                setState(prev => ({
+                                    ...prev,
+                                    chunksCompleted: prev.chunksCompleted + 1,
+                                }));
+                            }
+                        });
                 }
             } catch (err) {
                 console.error('[VAD] finishSession stop error:', err);
@@ -398,12 +449,14 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         // Aggregate results
         const aggregated = aggregateChunkResults(chunkResultsRef.current);
 
-        setState(prev => ({
-            ...prev,
-            isFinishing: false,
-            isRecording: false,
-            chunksCompleted: chunkResultsRef.current.filter(c => !c.processing).length,
-        }));
+        if (mountedRef.current) {
+            setState(prev => ({
+                ...prev,
+                isFinishing: false,
+                isRecording: false,
+                chunksCompleted: chunkResultsRef.current.filter(c => !c.processing).length,
+            }));
+        }
 
         return aggregated;
     }, [referenceText]);
@@ -418,7 +471,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
 
         if (recordingRef.current) {
             try {
-                await recordingRef.current.stopAndUnloadAsync();
+                await recordingRef.current.stop();
             } catch (_) {}
             recordingRef.current = null;
         }

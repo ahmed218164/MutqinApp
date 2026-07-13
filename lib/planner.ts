@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { sendReviewReminder } from './notifications';
 import { getSurahByNumber } from '../constants/surahs';
+import { addLocalDays, getLocalDay } from './date-utils';
 
 const REVIEW_DAYS = 5;
 
@@ -255,9 +256,8 @@ async function updateReviewScheduleClientFallback(
 
         const newState = sm2(quality, currentState);
 
-        const nextReview = new Date();
-        nextReview.setDate(nextReview.getDate() + newState.sm2_interval);
-        const nextReviewStr = nextReview.toISOString().split('T')[0];
+        const today = getLocalDay();
+        const nextReviewStr = addLocalDays(today, newState.sm2_interval);
 
         await supabase
             .from('review_schedule')
@@ -265,7 +265,7 @@ async function updateReviewScheduleClientFallback(
                 {
                     user_id:         userId,
                     surah_number:    surahNumber,           // ← FIXED: was 'surah'
-                    last_reviewed:   new Date().toISOString().split('T')[0],
+                    last_reviewed:   today,
                     next_review:     nextReviewStr,
                     mistake_count:   quality < 3
                         ? (existing?.mistake_count ?? 0) + 1
@@ -363,7 +363,7 @@ export async function fetchDueReviews(userId: string): Promise<DueReview[]> {
 
         // ── Fallback: simple date comparison ──────────────────────────────────
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDay();
             const { data, error } = await supabase
                 .from('review_schedule')
                 .select('surah_number, next_review, efactor, sm2_repetitions')  // ← FIXED: was 'surah'

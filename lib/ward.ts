@@ -16,6 +16,7 @@
 
 import { supabase } from './supabase';
 import { SURAHS, getSurahByNumber, Surah } from '../constants/surahs';
+import { getLocalDay } from './date-utils';
 
 // ─── In-memory cache for page verse counts ───────────────────────────────────
 // Populated lazily from SQLite on first call. Covers all 604 pages.
@@ -250,7 +251,7 @@ export function computeDailyWard(plan: MemorizationPlan): DailyWard {
     // Get the starting Mushaf page from the surah metadata.
     const startPage = getSurahByNumber(plan.fwdSurah ?? 1)?.page ?? 1;
     const targetVerses = versesForPageRange(startPage, Math.max(1, plan.dailyPages));
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDay();
     const completedToday = plan.lastWardAt === today;
     const estimatedMinutes = Math.round(plan.dailyPages * 10);
 
@@ -376,7 +377,7 @@ export async function advanceWardPosition(
                     : verseCompleted >= totalVersesInSurah
                         ? { bwd_surah: Math.max(1, surahNumber - 1), bwd_verse: 1 }
                         : { bwd_verse: verseCompleted + 1 }),
-                last_ward_at: new Date().toISOString().split('T')[0],
+                last_ward_at: getLocalDay(),
                 updated_at:   new Date().toISOString(),
             })
             .eq('user_id', userId);

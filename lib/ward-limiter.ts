@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase';
 import { performRandomTest, AI_MODELS } from './ai-models';
+import { getLocalDay } from './date-utils';
 
 export interface WardLimitStatus {
     shouldWarn: boolean;
@@ -64,7 +65,7 @@ export async function checkWardLimit(userId: string): Promise<WardLimitStatus> {
             .from('progress_logs')
             .select('wards_completed_today')
             .eq('user_id', userId)
-            .gte('completion_date', new Date().toISOString().split('T')[0])
+            .gte('completion_date', getLocalDay())
             .order('completion_date', { ascending: false });
 
         const wardsToday = progressData?.reduce((sum, log) => sum + (log.wards_completed_today || 0), 0) || 0;
@@ -225,7 +226,7 @@ async function logError(
  */
 export async function getTodaysCompletedWards(userId: string): Promise<CompletedWard[]> {
     try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDay();
 
         const { data: progressLogs } = await supabase
             .from('progress_logs')

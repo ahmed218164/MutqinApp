@@ -3,7 +3,6 @@ import { StyleSheet, View, Text } from 'react-native';
 import { Lightbulb } from 'lucide-react-native';
 import Card from '../ui/Card';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
-import { StaggerDelay } from '../../constants/animations';
 
 interface DailyTipCardProps {
     surahName?: string;
@@ -13,29 +12,30 @@ interface DailyTipCardProps {
 
 const TIPS = [
     {
-        hafs: "Basmalah counts as verse 1 in Surah Al-Fatihah only. In all other surahs, it is a separator and not numbered as a verse.",
-        shubah: "Basmalah is also verse 1 in Surah Al-Fatihah in the Shu'bah narration, but its counting in other surahs may differ from Hafs."
+        hafs: 'البسملة آية في سورة الفاتحة فقط في عد حفص، وتأتي فاصلة في أوائل السور الأخرى.',
+        shubah: 'في رواية شعبة تبقى البسملة في الفاتحة موضع عناية، وانتبه لاختلافات العد في بعض المواضع.',
     },
     {
-        hafs: "Madd Al-Munfasil (separated prolongation) is extended 4 or 5 harakahs in Hafs, depending on the chosen level of recitation.",
-        shubah: "Shu'bah typically extends Madd Al-Munfasil 4 harakahs, which is a key distinction from some Hafs recitations."
+        hafs: 'المد المنفصل في حفص يمد غالبا أربع أو خمس حركات بحسب طريق القراءة.',
+        shubah: 'المد المنفصل في شعبة يحتاج ثباتا في المقدار حتى لا تختلط الرواية بغيرها.',
     },
     {
-        hafs: "Sakt (brief silent pause without breathing) is required in Hafs in 4 places: Al-Mutaffifin:14, Al-Qiyamah:27, Ya-Sin:52, and Al-Kahf:1-2.",
-        shubah: "In Shu'bah, the Sakt rules differ — some of these locations use continuation instead of a pause."
+        hafs: 'السكت في حفص له مواضع مشهورة، مثل الكهف ويس والمطففين والقيامة؛ درب أذنك عليها.',
+        shubah: 'مواضع السكت في شعبة تختلف عن حفص، فاجعل الاستماع للشيخ مرجعك قبل التسميع.',
     },
     {
-        hafs: "The letter Ra (ر) is pronounced heavy (Tafkhim) by default in Hafs, with specific cases where it becomes light (Tarqiq), such as when preceded by a kasrah.",
-        shubah: "Shu'bah has more cases of Tarqiq (light) Ra than Hafs, particularly in certain word endings — pay special attention to these differences."
+        hafs: 'الراء في حفص بين التفخيم والترقيق، وأكثر الأخطاء تأتي من الاستعجال عند الكسرة.',
+        shubah: 'انتبه لحالات ترقيق الراء في شعبة، خصوصا عند أواخر الكلمات والوقف.',
     },
     {
-        hafs: "In Hafs, 'Ayn (ع) at the beginning of Surahs 19 and 42 is prolonged for 6 harakahs as it is a letter of opening (Muqatta'at).",
-        shubah: "The Muqatta'at letters at surah openings follow the same 6-harakah prolongation rule in Shu'bah as in Hafs."
+        hafs: 'الحروف المقطعة تحتاج نفسا هادئا ومقدارا ثابتا، خاصة العين في مريم والشورى.',
+        shubah: 'الحروف المقطعة في أوائل السور موضع ممتاز لضبط النفس والزمن قبل متابعة التلاوة.',
     },
 ];
 
-export default function DailyTipCard({ surahName, activeNarration = 'Hafs', delay = 0 }: DailyTipCardProps) {
-    const randomTip = TIPS[Math.floor(Math.random() * TIPS.length)];
+export default function DailyTipCard({ activeNarration = 'Hafs', delay = 0 }: DailyTipCardProps) {
+    const tipIndex = React.useMemo(() => new Date().getDate() % TIPS.length, []);
+    const randomTip = TIPS[tipIndex];
     const isHafs = activeNarration === 'Hafs';
     const accentColor = isHafs ? Colors.emerald[400] : Colors.gold[400];
     const tipText = isHafs ? randomTip.hafs : randomTip.shubah;
@@ -48,15 +48,17 @@ export default function DailyTipCard({ surahName, activeNarration = 'Hafs', dela
             delay={delay}
         >
             <View style={styles.header}>
-                <View style={[styles.iconContainer, { backgroundColor: accentColor + '20' }]}>
+                <View style={[styles.iconContainer, { backgroundColor: accentColor + '18' }]}>
                     <Lightbulb color={accentColor} size={20} />
                 </View>
-                <Text style={styles.title}>Daily Tip</Text>
+                <View style={styles.headerText}>
+                    <Text style={styles.title}>فائدة اليوم</Text>
+                    <Text style={[styles.subtitle, { color: accentColor }]}>
+                        رواية {activeNarration}
+                    </Text>
+                </View>
             </View>
 
-            <Text style={styles.content}>
-                Did you know? In <Text style={{ color: accentColor, fontWeight: 'bold' }}>{activeNarration}</Text>:
-            </Text>
             <Text style={styles.tip}>{tipText}</Text>
         </Card>
     );
@@ -66,7 +68,7 @@ const styles = StyleSheet.create({
     card: {
         marginTop: Spacing.xl,
         padding: Spacing.lg,
-        // No fixed height — let content dictate the height
+        borderRadius: BorderRadius.md,
     },
     header: {
         flexDirection: 'row',
@@ -75,24 +77,33 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
     },
     iconContainer: {
-        padding: Spacing.xs,
-        borderRadius: BorderRadius.full,
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerText: {
+        flex: 1,
+        alignItems: 'flex-end',
     },
     title: {
         fontSize: Typography.fontSize.base,
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
+        textAlign: 'right',
     },
-    content: {
-        fontSize: Typography.fontSize.sm,
-        color: Colors.text.secondary,
-        marginBottom: Spacing.xs,
+    subtitle: {
+        fontSize: Typography.fontSize.xs,
+        fontWeight: Typography.fontWeight.semibold,
+        marginTop: 2,
+        textAlign: 'right',
     },
     tip: {
         fontSize: Typography.fontSize.base,
-        color: Colors.text.inverse,
+        color: Colors.neutral[100],
         fontWeight: Typography.fontWeight.medium,
-        lineHeight: Typography.fontSize.base * 1.65, // explicit pixel lineHeight
-        flexShrink: 1,
+        lineHeight: Typography.fontSize.base * 1.7,
+        textAlign: 'right',
     },
 });

@@ -9,8 +9,9 @@
  */
 
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-    View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
+    View, Text, StyleSheet, TouchableOpacity,
     ScrollView, Animated, Platform, StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';

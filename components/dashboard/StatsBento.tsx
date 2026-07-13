@@ -109,7 +109,7 @@ export default function StatsBento({ streak, daysRemaining, totalXP, baseDelay =
                     <Text style={[styles.statValueHero, { color: accentColor }]}>
                         {streak}
                     </Text>
-                    <Text style={styles.statLabelHero}>Day Streak 🔥</Text>
+                    <Text style={styles.statLabelHero}>سلسلة الأيام</Text>
 
                     {/* Small "Keep going" bar */}
                     <View style={styles.streakBarBg}>
@@ -120,13 +120,13 @@ export default function StatsBento({ streak, daysRemaining, totalXP, baseDelay =
                             style={[styles.streakBarFill, { width: `${Math.min(100, (streak % 7) / 7 * 100)}%` }]}
                         />
                     </View>
-                    <Text style={styles.streakBarLabel}>{7 - (streak % 7)} days to next milestone</Text>
+                    <Text style={styles.streakBarLabel}>{7 - (streak % 7)} أيام للإنجاز القادم</Text>
                 </View>
             </GradientBorderCard>
 
             {/* ─── Right Column ─── */}
             <View style={styles.column}>
-                {/* Days Left */}
+                {/* الأيام المتبقية */}
                 <GradientBorderCard
                     style={styles.smallCardWrapper}
                     gradientColors={['rgba(52,211,153,0.8)', 'rgba(20,184,166,0.4)', 'rgba(52,211,153,0.1)']}
@@ -140,12 +140,12 @@ export default function StatsBento({ streak, daysRemaining, totalXP, baseDelay =
                             <Text style={[styles.smallStatValue, { color: Colors.emerald[300] }]}>
                                 {daysRemaining}
                             </Text>
-                            <Text style={styles.smallStatLabel}>Days Left</Text>
+                            <Text style={styles.smallStatLabel}>الأيام المتبقية</Text>
                         </View>
                     </View>
                 </GradientBorderCard>
 
-                {/* Total XP */}
+                {/* نقاط الخبرة */}
                 <GradientBorderCard
                     style={styles.smallCardWrapper}
                     gradientColors={['rgba(251,191,36,0.8)', 'rgba(245,158,11,0.4)', 'rgba(251,191,36,0.1)']}
@@ -159,7 +159,7 @@ export default function StatsBento({ streak, daysRemaining, totalXP, baseDelay =
                             <Text style={[styles.smallStatValue, { color: Colors.gold[300] }]}>
                                 {totalXP >= 1000 ? `${(totalXP / 1000).toFixed(1)}k` : totalXP}
                             </Text>
-                            <Text style={styles.smallStatLabel}>Total XP</Text>
+                            <Text style={styles.smallStatLabel}>نقاط الخبرة</Text>
                         </View>
                     </View>
                 </GradientBorderCard>
@@ -228,14 +228,14 @@ const styles = StyleSheet.create({
         fontSize: 52,
         fontWeight: '800' as const,
         lineHeight: 56,
-        letterSpacing: -1,
+        letterSpacing: 0,
     },
     statLabelHero: {
         fontSize: Typography.fontSize.sm,
         color: Colors.text.tertiary,
         marginTop: Spacing.xs,
         marginBottom: Spacing.md,
-        letterSpacing: 0.3,
+        letterSpacing: 0,
     },
     streakBarBg: {
         height: 5,
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     streakBarLabel: {
         fontSize: 10,
         color: Colors.text.tertiary,
-        letterSpacing: 0.2,
+        letterSpacing: 0,
     },
     // Small card
     smallCardRow: {
@@ -266,12 +266,12 @@ const styles = StyleSheet.create({
     smallStatValue: {
         fontSize: Typography.fontSize['2xl'],
         fontWeight: '800' as const,
-        letterSpacing: -0.5,
+        letterSpacing: 0,
     },
     smallStatLabel: {
         fontSize: Typography.fontSize.xs,
         color: Colors.text.tertiary,
         marginTop: 2,
-        letterSpacing: 0.3,
+        letterSpacing: 0,
     },
 });

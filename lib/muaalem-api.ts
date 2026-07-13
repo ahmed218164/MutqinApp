@@ -77,7 +77,7 @@ export interface AyahRange {
 /**
  * Send an audio recording to the Muaalem Tajweed API for evaluation.
  *
- * @param audioUri  Local file URI (e.g. from expo-av Recording.getURI())
+ * @param audioUri  Local file URI (e.g. from expo-audio AudioRecorder.uri)
  * @param uthmaniText  The Uthmani reference text (fallback if ayahRange not provided)
  * @param ayahRange  Surah + ayah range — backend uses Aya class for canonical text
  * @returns MuaalemAssessment with score + detailed mistakes

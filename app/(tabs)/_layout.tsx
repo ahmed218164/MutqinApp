@@ -60,7 +60,7 @@ export default function TabLayout() {
     function guardedTabPress(e: any) {
         if (hasPlan === false) {
             (e as any).preventDefault();
-            router.replace('/(tabs)/plan');
+            router.navigate('/(tabs)/plan');
         }
     }
 

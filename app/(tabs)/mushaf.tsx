@@ -68,7 +68,7 @@ const ringStyles = StyleSheet.create({
     number: {
         fontSize: Typography.fontSize.sm,
         fontWeight: '700' as const,
-        letterSpacing: -0.3,
+        letterSpacing: 0,
     },
 });
 
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.xs,
         color: Colors.emerald[400],
         fontWeight: '600' as const,
-        letterSpacing: 1.8,
+        letterSpacing: 0,
         textTransform: 'uppercase',
         marginBottom: 2,
     },
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize['4xl'],
         fontWeight: '800' as const,
         color: Colors.text.inverse,
-        letterSpacing: -1,
+        letterSpacing: 0,
     },
     headerActions: {
         flexDirection: 'row',

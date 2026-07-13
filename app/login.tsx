@@ -1,11 +1,11 @@
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View,
     Text,
     TextInput,
     TouchableOpacity,
     StyleSheet,
-    SafeAreaView,
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
@@ -105,7 +105,6 @@ export default function LoginScreen() {
         setLoading(true);
         try {
             await signIn(email, password);
-            router.replace('/(tabs)');
         } catch (error: any) {
             const msg = error?.message || 'فشل تسجيل الدخول. تحقق من بياناتك.';
             setErrorMsg(

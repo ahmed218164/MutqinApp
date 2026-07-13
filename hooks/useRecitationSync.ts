@@ -23,6 +23,10 @@ import { awardXP, checkAchievements, updateStreak, XP_REWARDS } from '../lib/gam
 import { sendGoalCompletionNotification } from '../lib/notifications';
 import { advanceWardPosition } from '../lib/ward';
 import { getSurahByNumber } from '../constants/surahs';
+import { checkConnectivity } from '../lib/network';
+import { offlineQueue } from '../lib/offline-queue';
+import { createEventId, getLocalDay } from '../lib/date-utils';
+import { successHaptic, warningHaptic } from '../lib/haptics';
 import type { RecitationAssessment } from '../lib/recitation-storage';
 import type { Ayah } from './useSurahFetcher';
 
@@ -99,12 +103,14 @@ export interface SaveResultsOptions {
     selectedRange: { from: number; to: number };
     verses: Ayah[];
     getPlanSide: () => 'forward' | 'backward';
+    sessionId?: string;
 }
 
 export interface SaveOutcome {
     success: boolean;
     isSurahCompleted: boolean;
     hasNextSurah: boolean;
+    localSaved?: boolean;
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -120,6 +126,53 @@ export function useRecitationSync(): RecitationSyncResult {
         setSaving(true);
 
         try {
+            const localDay = getLocalDay();
+            const sessionEventId = opts.sessionId ?? createEventId([
+                'recitation',
+                userId,
+                localDay,
+                surahNumber,
+                selectedRange.from,
+                selectedRange.to,
+                Date.now(),
+            ]);
+            const side = getPlanSide();
+            const surahData = getSurahByNumber(surahNumber);
+            const totalVerses = surahData?.verses ?? verses.length;
+            const versePages = verses
+                .filter(v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to)
+                .map(v => v.page);
+            const uniquePages = versePages.length > 0 ? new Set(versePages).size : 1;
+            const isOnline = await checkConnectivity();
+
+            if (!isOnline) {
+                await offlineQueue.addRecitationEvent({
+                    eventId: sessionEventId,
+                    userId,
+                    localDay,
+                    surahNumber,
+                    surahName,
+                    selectedRange,
+                    uniquePages,
+                    score: assessment.score ?? null,
+                    mistakes: assessment.mistakes ?? [],
+                    side,
+                    totalVerses,
+                    createdAt: new Date().toISOString(),
+                });
+                await warningHaptic();
+                Alert.alert(
+                    'تم حفظ التقدم محلياً',
+                    'أنت غير متصل الآن. حفظنا نتيجة التسميع على جهازك وسنزامنها عند عودة الاتصال.'
+                );
+                return {
+                    success: true,
+                    isSurahCompleted: selectedRange.from === 1 && selectedRange.to >= totalVerses,
+                    hasNextSurah: side === 'backward' ? surahNumber > 1 : surahNumber < 114,
+                    localSaved: true,
+                };
+            }
+
             // ── Save individual mistakes ───────────────────────────────────
             if (assessment.mistakes && assessment.mistakes.length > 0) {
                 const mistakesToSave = assessment.mistakes.map(mistake => ({
@@ -127,99 +180,56 @@ export function useRecitationSync(): RecitationSyncResult {
                     surah: surahNumber,
                     verse: selectedRange.from,
                     error_description: `${mistake.text} → ${mistake.correction}: ${mistake.description}`,
+                    event_id: sessionEventId,
                     created_at: new Date().toISOString(),
                 }));
 
-                const mistakeResult = await saveWithRetry(
-                    async () => {
-                        const { data, error } = await supabase.from('mistake_log').insert(mistakesToSave);
-                        return { data, error };
-                    },
-                    { maxRetries: 3, baseDelayMs: 1000 }
-                );
-                if (!mistakeResult.success) {
-                    console.warn('[saveResults] mistake_log insert failed after retries:', mistakeResult.error?.message);
+                const { error: mistakeError } = await supabase.from('mistake_log').insert(mistakesToSave);
+                if (mistakeError) {
+                    console.warn('[saveResults] mistake_log insert failed:', mistakeError.message);
                 }
             }
 
             // ── Save daily log with surah_number + verse range ────────────
-            // Compute unique pages from actual verse data so the completion
-            // detector can match against the user's real progress.
-            const versePages = verses
-                .filter(v => v.numberInSurah >= selectedRange.from && v.numberInSurah <= selectedRange.to)
-                .map(v => v.page);
-            const uniquePages = versePages.length > 0 ? new Set(versePages).size : 1;
-
-            const today = new Date().toISOString().split('T')[0];
-            const { data: existingLog } = await supabase
-                .from('daily_logs')
-                .select('id, pages_completed')
-                .eq('user_id', userId)
-                .eq('date', today)
-                .eq('surah_number', surahNumber)
-                .maybeSingle();
-
-            if (existingLog) {
-                const updateResult = await saveWithRetry(
-                    async () => {
-                        const { data, error } = await supabase.from('daily_logs').update({
-                            pages_completed: (existingLog.pages_completed || 0) + uniquePages,
-                            verse_from: selectedRange.from,
-                            verse_to: selectedRange.to,
-                            score: assessment.score ?? null,
-                            updated_at: new Date().toISOString(),
-                        }).eq('id', existingLog.id);
-                        return { data, error };
-                    },
-                    { maxRetries: 3, baseDelayMs: 1000 }
-                );
-                if (!updateResult.success) {
-                    console.warn('[saveResults] daily_logs update failed after retries:', updateResult.error?.message);
-                }
-            } else {
-                const insertResult = await saveWithRetry(
-                    async () => {
-                        const { data, error } = await supabase.from('daily_logs').insert({
-                            user_id: userId,
-                            date: today,
-                            surah_number: surahNumber,
-                            verse_from: selectedRange.from,
-                            verse_to: selectedRange.to,
-                            pages_completed: uniquePages,
-                            score: assessment.score ?? null,
-                            created_at: new Date().toISOString(),
-                        });
-                        return { data, error };
-                    },
-                    { maxRetries: 3, baseDelayMs: 1000 }
-                );
-                if (!insertResult.success) {
-                    console.warn('[saveResults] daily_logs insert failed after retries:', insertResult.error?.message);
-                }
+            const dailyLogResult = await saveWithRetry(
+                async () => {
+                    const { data, error } = await supabase.rpc('upsert_daily_log_atomic', {
+                        p_user_id: userId,
+                        p_date: localDay,
+                        p_surah_number: surahNumber,
+                        p_verse_from: selectedRange.from,
+                        p_verse_to: selectedRange.to,
+                        p_pages: uniquePages,
+                        p_score: assessment.score ?? null,
+                        p_event_id: sessionEventId,
+                    });
+                    return { data, error };
+                },
+                { maxRetries: 3, baseDelayMs: 1000 }
+            );
+            if (!dailyLogResult.success) {
+                console.warn('[saveResults] daily log RPC failed after retries:', dailyLogResult.error?.message);
             }
 
             // SM-2: pass the 0-100 score — planner converts it to quality 0-5 internally
             await updateReviewSchedule(userId, surahNumber, assessment.score ?? 0);
 
             // ✔️ Update streak AFTER saving the daily_log (correct order)
-            const streakStatus = await updateStreak(userId);
+            const streakStatus = await updateStreak(userId, localDay);
             if (streakStatus === 'incremented') {
-                await awardXP(userId, XP_REWARDS.DAILY_STREAK, 'Daily Streak');
+                await awardXP(userId, XP_REWARDS.DAILY_STREAK, 'Daily Streak', `${sessionEventId}:streak`);
             }
 
-            await awardXP(userId, XP_REWARDS.PAGE_COMPLETED, 'Page Recitation');
+            await awardXP(userId, XP_REWARDS.PAGE_COMPLETED, 'Page Recitation', `${sessionEventId}:page`);
 
             if (!assessment.mistakes || assessment.mistakes.length === 0) {
-                await awardXP(userId, XP_REWARDS.PERFECT_RECITATION, 'Perfect Recitation');
+                await awardXP(userId, XP_REWARDS.PERFECT_RECITATION, 'Perfect Recitation', `${sessionEventId}:perfect`);
             }
 
             await checkAchievements(userId);
 
             // ── Surah completion: direct check + RPC upsert ───────────────────
-            const surahData = getSurahByNumber(surahNumber);
             if (surahData && surahData.verses > 0) {
-                const totalVerses = surahData.verses;
-
                 // ── Direct single-session surah completion check ───────────
                 const isDirectlyComplete = selectedRange.to >= totalVerses && selectedRange.from === 1;
                 console.log(`[saveResults] Range ${selectedRange.from}–${selectedRange.to} of ${totalVerses} verses. Direct complete: ${isDirectlyComplete}`);
@@ -256,8 +266,8 @@ export function useRecitationSync(): RecitationSyncResult {
                 }
 
                 if (isSurahCompleted) {
-                    const side = getPlanSide();
                     console.log(`[saveResults] 🎉 Surah ${surahNumber} complete! Plan side: ${side}`);
+                    await successHaptic();
                     await sendGoalCompletionNotification(surahName);
 
                     // Advance ward position in DB (plan-aware)

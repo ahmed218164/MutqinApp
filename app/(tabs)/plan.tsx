@@ -1,10 +1,10 @@
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
-    SafeAreaView,
     TextInput,
     TouchableOpacity,
 } from 'react-native';
@@ -57,6 +57,50 @@ const INTENSITY_LEVELS: { key: Intensity; label: string; sub: string; emoji: str
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
+
+type PlanRecord = {
+    user_id: string;
+    day_number: number;
+    verses_range: { page_from: number; page_to: number };
+    task_type: 'Memorize' | 'Review';
+    is_unlocked: boolean;
+};
+
+function buildPlanRecords(userId: string, dailyPages: number): PlanRecord[] {
+    const records: PlanRecord[] = [];
+    const reviewFrequency = 7;
+    const totalPages = 604;
+    const pageStep = Math.max(1, Math.min(20, Math.floor(dailyPages)));
+    let currentPage = 1;
+    let dayNumber = 1;
+
+    while (currentPage <= totalPages && dayNumber <= 2000) {
+        if (dayNumber % reviewFrequency === 0) {
+            const reviewStart = Math.max(1, currentPage - pageStep * (reviewFrequency - 1));
+            const reviewEnd = Math.max(reviewStart, currentPage - 1);
+            records.push({
+                user_id: userId,
+                day_number: dayNumber,
+                verses_range: { page_from: reviewStart, page_to: reviewEnd },
+                task_type: 'Review',
+                is_unlocked: dayNumber === 1,
+            });
+        } else {
+            const endPage = Math.min(currentPage + pageStep - 1, totalPages);
+            records.push({
+                user_id: userId,
+                day_number: dayNumber,
+                verses_range: { page_from: currentPage, page_to: endPage },
+                task_type: 'Memorize',
+                is_unlocked: dayNumber === 1,
+            });
+            currentPage = endPage + 1;
+        }
+        dayNumber++;
+    }
+
+    return records;
+}
 
 export default function PlanScreen() {
     const { user } = useAuth();
@@ -188,7 +232,7 @@ export default function PlanScreen() {
             if (profile?.qiraat)   setQiraat(profile.qiraat);
 
             // Generate an algorithmic pace (same as Edge Function local fallback)
-            const pagesPerDay    = ageNum < 15 ? 1.0 : ageNum < 25 ? 1.5 : ageNum < 40 ? 1.0 : 0.5;
+            const pagesPerDay    = Math.max(1, ageNum < 15 ? 1.0 : ageNum < 25 ? 1.5 : ageNum < 40 ? 1.0 : 0.5);
             const reviewFreq     = 7;
             const totalDays      = Math.ceil(604 / pagesPerDay * 1.15);
 
@@ -263,6 +307,8 @@ export default function PlanScreen() {
         const ageNum = parseInt(age);
         if (isNaN(ageNum) || ageNum < 5 || ageNum > 100) return;
 
+        setPlanError(null);
+        setPlanSuccess(null);
         setLoading(true);
         try {
             if (!user) return;
@@ -297,6 +343,18 @@ export default function PlanScreen() {
             const pagesCompleted = logs?.reduce((s, l) => s + (l.pages_completed || 0), 0) || 0;
             const pagesRemaining = Math.max(1, 604 - pagesCompleted);
             const dailyPages = Math.max(1, Math.min(20, Math.round(pagesRemaining / daysUntilTarget)));
+            const planRecords = buildPlanRecords(user.id, dailyPages);
+
+            const { error: deletePlanError } = await supabase
+                .from('user_plans')
+                .delete()
+                .eq('user_id', user.id);
+            if (deletePlanError) throw deletePlanError;
+
+            const { error: insertPlanError } = await supabase
+                .from('user_plans')
+                .insert(planRecords);
+            if (insertPlanError) throw insertPlanError;
 
             // ── ④ Sync daily_pages to memorization_plan ───────────────────────
             const { data: existingWard } = await supabase
@@ -445,7 +503,7 @@ export default function PlanScreen() {
                                 </View>
 
                                 {/* Ward setup button — only if ward plan not configured yet */}
-                                {hasWardPlan && (
+                                {!hasWardPlan && (
                                     <TouchableOpacity
                                         style={styles.wardSetupBtn}
                                         onPress={() => router.push({

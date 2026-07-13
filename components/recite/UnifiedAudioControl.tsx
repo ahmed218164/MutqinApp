@@ -23,7 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
-import BottomSheet from '@gorhom/bottom-sheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useProgress } from 'react-native-track-player';
 import {
     Headphones, Mic, X,
@@ -183,7 +183,7 @@ function UnifiedAudioControlInner({
     const setSelectedReciter = React.useCallback((r: Reciter) => {
         if (!externalSelectedReciter) setInternalReciter(r);
     }, [externalSelectedReciter]);
-    const internalReciterSheetRef = React.useRef<BottomSheet>(null);
+    const internalReciterSheetRef = React.useRef<BottomSheetModal>(null);
 
     // Live engine state
     const engineState = useAudioEngine();
@@ -426,7 +426,7 @@ function UnifiedAudioControlInner({
                                     if (onReciterAvatarPress) {
                                         onReciterAvatarPress();
                                     } else {
-                                        internalReciterSheetRef.current?.snapToIndex(0);
+                                        internalReciterSheetRef.current?.present();
                                     }
                                 }}
                                 activeOpacity={0.7}

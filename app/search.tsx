@@ -13,9 +13,10 @@
  */
 
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View, Text, TextInput, StyleSheet, FlatList,
-    SafeAreaView, ActivityIndicator, TouchableOpacity,
+ActivityIndicator, TouchableOpacity,
     Modal, ScrollView, Share, Alert, Clipboard, Platform,
 } from 'react-native';
 import Animated, {
@@ -537,7 +538,6 @@ export default function SearchScreen() {
                         contentContainerStyle={styles.list}
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
-                        estimatedItemSize={130}
                     />
                 </View>
             )}

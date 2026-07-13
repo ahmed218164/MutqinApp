@@ -18,9 +18,10 @@ interface FeedbackModalProps {
     onClose: () => void;
     feedback: RecitationAssessment | null;
     saving: boolean;
+    localSaved?: boolean;
 }
 
-export default function FeedbackModal({ visible, onClose, feedback, saving }: FeedbackModalProps) {
+export default function FeedbackModal({ visible, onClose, feedback, saving, localSaved = false }: FeedbackModalProps) {
     if (!feedback) return null;
 
     function getModelDisplayName(modelId?: string): string {
@@ -54,9 +55,28 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
         }
     }
 
+    function getSeverityLabel(severity?: string) {
+        switch (severity) {
+            case 'critical': return 'مهم جدًا';
+            case 'major': return 'كبير';
+            case 'moderate': return 'متوسط';
+            case 'minor': return 'خفيف';
+            default: return 'خفيف';
+        }
+    }
+
     const omissionMistakes = feedback.mistakes?.filter(m => m.category === 'omission') ?? [];
     const tajweedMistakes = feedback.mistakes?.filter(m => m.category !== 'omission') ?? [];
     const hasOmissions = omissionMistakes.length > 0;
+    const totalMistakes = feedback.mistakes?.length ?? 0;
+    const earnedXP = 10 + (totalMistakes === 0 ? 20 : 0);
+    const masteryLabel = totalMistakes === 0
+        ? 'متقن'
+        : feedback.score >= 85
+            ? 'جيد'
+            : feedback.score >= 70
+                ? 'قيد التثبيت'
+                : 'يحتاج عناية';
 
     return (
         <Modal
@@ -86,7 +106,30 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
                         </View>
                     )}
 
+                    {localSaved && (
+                        <View style={styles.localSavedContainer}>
+                            <Text style={styles.localSavedText}>
+                                تم حفظ النتيجة على الجهاز وستتم المزامنة عند عودة الاتصال
+                            </Text>
+                        </View>
+                    )}
+
                     <ScrollView showsVerticalScrollIndicator={false}>
+                        <View style={styles.summaryGrid}>
+                            <View style={styles.summaryItem}>
+                                <Text style={styles.summaryValue}>{masteryLabel}</Text>
+                                <Text style={styles.summaryLabel}>حالة الإتقان</Text>
+                            </View>
+                            <View style={styles.summaryItem}>
+                                <Text style={styles.summaryValue}>{totalMistakes}</Text>
+                                <Text style={styles.summaryLabel}>الأخطاء</Text>
+                            </View>
+                            <View style={styles.summaryItem}>
+                                <Text style={styles.summaryValue}>+{earnedXP}</Text>
+                                <Text style={styles.summaryLabel}>نقاط متوقعة</Text>
+                            </View>
+                        </View>
+
                         {/* Score */}
                         <View style={styles.scoreContainer}>
                             <View style={[styles.scoreCircle, { borderColor: feedback.score >= 90 ? Colors.success : feedback.score >= 70 ? Colors.warning : Colors.error }]}>
@@ -116,7 +159,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
                                     <AlertTriangle color="#fff" size={16} />
                                     <Text style={styles.omissionCardTitle}>نقص في التلاوة</Text>
                                     <View style={styles.criticalBadge}>
-                                        <Text style={styles.criticalBadgeText}>critical</Text>
+                                        <Text style={styles.criticalBadgeText}>مهم</Text>
                                     </View>
                                 </View>
                                 <Text style={styles.omissionCardMissing}>{mistake.text}</Text>
@@ -137,7 +180,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving }: Fe
                                                 </Text>
                                             </View>
                                             <View style={[styles.severityBadge, { backgroundColor: getSeverityColor(mistake.severity) }]}>
-                                                <Text style={styles.severityText}>{mistake.severity || 'minor'}</Text>
+                                                <Text style={styles.severityText}>{getSeverityLabel(mistake.severity)}</Text>
                                             </View>
                                         </View>
                                         <Text style={styles.mistakeText}>
@@ -223,6 +266,45 @@ const styles = StyleSheet.create({
         color: Colors.gold[700],
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.medium,
+    },
+    localSavedContainer: {
+        backgroundColor: Colors.emerald[50],
+        borderColor: Colors.emerald[200],
+        borderWidth: 1,
+        borderRadius: BorderRadius.base,
+        padding: Spacing.sm,
+        marginBottom: Spacing.md,
+    },
+    localSavedText: {
+        color: Colors.emerald[800],
+        fontSize: Typography.fontSize.sm,
+        fontWeight: Typography.fontWeight.medium,
+        textAlign: 'center',
+    },
+    summaryGrid: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        marginBottom: Spacing.lg,
+    },
+    summaryItem: {
+        flex: 1,
+        backgroundColor: Colors.neutral[100],
+        borderRadius: BorderRadius.base,
+        paddingVertical: Spacing.md,
+        paddingHorizontal: Spacing.sm,
+        alignItems: 'center',
+    },
+    summaryValue: {
+        color: Colors.emerald[800],
+        fontSize: Typography.fontSize.base,
+        fontWeight: Typography.fontWeight.bold,
+        textAlign: 'center',
+    },
+    summaryLabel: {
+        color: Colors.text.secondary,
+        fontSize: Typography.fontSize.xs,
+        marginTop: 4,
+        textAlign: 'center',
     },
     scoreContainer: {
         alignItems: 'center',

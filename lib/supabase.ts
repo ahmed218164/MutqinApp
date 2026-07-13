@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { isNetworkError, warnNetworkOnce } from './network-errors';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,7 +17,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-  const maxRetries = 3;
+  const maxRetries = 2;
   let lastError: Error | null = null;
   // Only retry idempotent/safe methods — retrying POST/DELETE/PATCH can cause
   // duplicate achievements, double XP awards, or other data corruption.
@@ -29,16 +30,13 @@ const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promi
       return response;
     } catch (error: any) {
       lastError = error;
-      const isNetworkError = 
-        error.message?.includes('network') ||
-        error.message?.includes('timeout') ||
-        error.message?.includes('fetch');
-
-      if (isNetworkError && isSafeToRetry && attempt < maxRetries) {
+      if (isNetworkError(error) && isSafeToRetry && attempt < maxRetries) {
         const delay = Math.pow(2, attempt - 1) * 1000;
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
+
+      warnNetworkOnce('Supabase', error);
       throw error;
     }
   }

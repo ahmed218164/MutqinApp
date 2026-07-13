@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { lightImpact } from '../../lib/haptics';
@@ -22,7 +22,6 @@ interface AudioPlayerControlsProps {
     accentColor: string;
     learningMode?: boolean;
     onLearningStepComplete?: () => void;
-    /** The currently selected reciter; falls back to Mishary Alafasy if omitted. */
     selectedReciter?: Reciter;
     onSurahEnd?: () => void;
 }
@@ -30,7 +29,6 @@ interface AudioPlayerControlsProps {
 export default function AudioPlayerControls({
     surahNumber,
     verses,
-    activeQiraat,
     onVerseChange,
     accentColor,
     learningMode = false,
@@ -43,54 +41,49 @@ export default function AudioPlayerControls({
     const [isLoading, setIsLoading] = React.useState(false);
     const [playbackSpeed, setPlaybackSpeed] = React.useState(1.0);
 
-    const soundRef = React.useRef<Audio.Sound | null>(null);
-    const nextSoundRef = React.useRef<Audio.Sound | null>(null);
+    const soundRef = React.useRef<AudioPlayer | null>(null);
+    const nextSoundRef = React.useRef<AudioPlayer | null>(null);
+    const statusSubscriptionRef = React.useRef<{ remove: () => void } | null>(null);
 
-    // Resolve the effective reciter
     const reciter = selectedReciter ?? getDefaultReciter();
-
-    // Display name shown below the verse counter
     const qariName = reciter.nameArabic
         ? `${reciter.name} · ${reciter.nameArabic}`
         : reciter.name;
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    const releasePlayer = React.useCallback((player: AudioPlayer | null) => {
+        if (!player) return;
+        try {
+            player.pause();
+            player.remove();
+        } catch {
+            // Best-effort cleanup.
+        }
+    }, []);
 
-    async function resolveUri(index: number): Promise<string | null> {
+    const resolveUri = React.useCallback(async (index: number): Promise<string | null> => {
         const verse = verses[index];
         if (!verse) return null;
         return getAyahAudioUrl(surahNumber, verse.numberInSurah, reciter);
-    }
+    }, [reciter, surahNumber, verses]);
 
-    /** Silently load the next verse into memory so playback is instant. */
-    const preBufferNext = React.useCallback(
-        async (nextIndex: number) => {
-            if (nextIndex >= verses.length) return;
-            if (nextSoundRef.current) return; // already buffered
+    const preBufferNext = React.useCallback(async (nextIndex: number) => {
+        if (nextIndex >= verses.length || nextSoundRef.current) return;
 
-            try {
-                // Fire-and-forget prefetch of the JSON response
-                prefetchAyahAudio(surahNumber, verses[nextIndex].numberInSurah);
+        try {
+            prefetchAyahAudio(surahNumber, verses[nextIndex].numberInSurah);
 
-                const uri = await resolveUri(nextIndex);
-                if (!uri) return;
+            const uri = await resolveUri(nextIndex);
+            if (!uri) return;
 
-                const { sound: preloaded } = await Audio.Sound.createAsync(
-                    { uri },
-                    { shouldPlay: false, rate: playbackSpeed }
-                );
-                nextSoundRef.current = preloaded;
-            } catch {
-                // Silently ignore pre-buffer errors — will fall back to normal load
-            }
-        },
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [verses, surahNumber, playbackSpeed, reciter]
-    );
+            const preloaded = createAudioPlayer(uri, { updateInterval: 250 });
+            preloaded.setPlaybackRate(playbackSpeed);
+            nextSoundRef.current = preloaded;
+        } catch {
+            // The normal playback path will load the verse if pre-buffering fails.
+        }
+    }, [playbackSpeed, resolveUri, surahNumber, verses]);
 
-    // ── Core Playback ─────────────────────────────────────────────────────────
-
-    const loadAndPlayVerse = async (index: number) => {
+    const loadAndPlayVerse = React.useCallback(async (index: number) => {
         if (index >= verses.length) {
             setIsPlaying(false);
             return;
@@ -99,59 +92,52 @@ export default function AudioPlayerControls({
         try {
             setIsLoading(true);
 
-            let newSound: Audio.Sound;
+            let newSound: AudioPlayer;
 
             if (nextSoundRef.current) {
-                // Use pre-buffered sound — instant playback
                 newSound = nextSoundRef.current;
                 nextSoundRef.current = null;
-                await newSound.setRateAsync(playbackSpeed, true);
-                await newSound.playAsync();
             } else {
-                // Unload previous sound
-                if (soundRef.current) {
-                    try { await soundRef.current.stopAsync(); } catch { }
-                    try { await soundRef.current.unloadAsync(); } catch { }
-                    soundRef.current = null;
-                }
+                releasePlayer(soundRef.current);
+                soundRef.current = null;
 
                 const uri = await resolveUri(index);
                 if (!uri) throw new Error('Could not resolve audio URL');
 
-                const { sound: loaded } = await Audio.Sound.createAsync(
-                    { uri },
-                    { shouldPlay: true, rate: playbackSpeed }
-                );
-                newSound = loaded;
+                newSound = createAudioPlayer(uri, { updateInterval: 250 });
             }
 
-            // Unload the old sound (if we swapped from pre-buffer)
             if (soundRef.current && soundRef.current !== newSound) {
-                try { await soundRef.current.unloadAsync(); } catch { }
+                releasePlayer(soundRef.current);
             }
 
+            statusSubscriptionRef.current?.remove();
+            statusSubscriptionRef.current = null;
+
+            newSound.setPlaybackRate(playbackSpeed);
+            newSound.play();
             soundRef.current = newSound;
+
             setCurrentVerseIndex(index);
             onVerseChange(index);
             setIsPlaying(true);
-
-            // Start pre-buffering the NEXT verse immediately
             preBufferNext(index + 1);
 
-            newSound.setOnPlaybackStatusUpdate((status) => {
-                if (status.isLoaded && status.didJustFinish) {
-                    if (learningMode) {
-                        setIsPlaying(false);
-                        onLearningStepComplete?.();
-                    } else {
-                        const nextIndex = index + 1;
-                        if (nextIndex < verses.length) {
-                            loadAndPlayVerse(nextIndex);
-                        } else {
-                            setIsPlaying(false);
-                            onSurahEnd?.();
-                        }
-                    }
+            statusSubscriptionRef.current = newSound.addListener('playbackStatusUpdate', (status) => {
+                if (!status.isLoaded || !status.didJustFinish) return;
+
+                if (learningMode) {
+                    setIsPlaying(false);
+                    onLearningStepComplete?.();
+                    return;
+                }
+
+                const nextIndex = index + 1;
+                if (nextIndex < verses.length) {
+                    loadAndPlayVerse(nextIndex);
+                } else {
+                    setIsPlaying(false);
+                    onSurahEnd?.();
                 }
             });
         } catch (error) {
@@ -160,18 +146,26 @@ export default function AudioPlayerControls({
         } finally {
             setIsLoading(false);
         }
-    };
-
-    // ── Controls ──────────────────────────────────────────────────────────────
+    }, [
+        learningMode,
+        onLearningStepComplete,
+        onSurahEnd,
+        onVerseChange,
+        playbackSpeed,
+        preBufferNext,
+        releasePlayer,
+        resolveUri,
+        verses.length,
+    ]);
 
     const togglePlayback = async () => {
         lightImpact();
         if (soundRef.current) {
             if (isPlaying) {
-                await soundRef.current.pauseAsync();
+                soundRef.current.pause();
                 setIsPlaying(false);
             } else {
-                await soundRef.current.playAsync();
+                soundRef.current.play();
                 setIsPlaying(true);
             }
         } else {
@@ -198,58 +192,47 @@ export default function AudioPlayerControls({
         const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
         const newSpeed = speeds[nextIdx];
         setPlaybackSpeed(newSpeed);
-        if (soundRef.current) {
-            await soundRef.current.setRateAsync(newSpeed, true);
-        }
+        soundRef.current?.setPlaybackRate(newSpeed);
         lightImpact();
     };
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    // Auto-play on mount
     React.useEffect(() => {
         loadAndPlayVerse(0);
         return () => {
-            soundRef.current?.unloadAsync().catch(() => { });
-            nextSoundRef.current?.unloadAsync().catch(() => { });
+            statusSubscriptionRef.current?.remove();
+            releasePlayer(soundRef.current);
+            releasePlayer(nextSoundRef.current);
+            soundRef.current = null;
+            nextSoundRef.current = null;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // When reciter changes mid-session, reload current verse with the new reciter
     const reciterIdRef = React.useRef(reciter.id);
     React.useEffect(() => {
         if (reciterIdRef.current === reciter.id) return;
         reciterIdRef.current = reciter.id;
-        // Clear pre-buffered sound for previous reciter
-        nextSoundRef.current?.unloadAsync().catch(() => { });
+        releasePlayer(nextSoundRef.current);
         nextSoundRef.current = null;
-        // Restart from current verse with the new reciter
         loadAndPlayVerse(currentVerseIndex);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [reciter.id]);
-
-    // ── Render ────────────────────────────────────────────────────────────────
+    }, [currentVerseIndex, loadAndPlayVerse, reciter.id, releasePlayer]);
 
     return (
         <View style={styles.container}>
-            {/* Info Section */}
             <View style={styles.infoContainer}>
                 <Text style={styles.verseText}>
-                    Verse {currentVerseIndex + 1} of {verses.length}
+                    الآية {currentVerseIndex + 1} من {verses.length}
                 </Text>
                 <Text style={[styles.reciterText, { color: accentColor }]} numberOfLines={1}>
                     {qariName}
                 </Text>
             </View>
 
-            {/* Playback Controls */}
             <View style={styles.controlsContainer}>
                 <TouchableOpacity
                     onPress={playPreviousVerse}
                     disabled={currentVerseIndex === 0}
                     accessibilityRole="button"
-                    accessibilityLabel="Previous verse"
+                    accessibilityLabel="الآية السابقة"
                 >
                     <SkipBack
                         size={24}
@@ -261,7 +244,7 @@ export default function AudioPlayerControls({
                     style={[styles.playButton, { backgroundColor: accentColor }]}
                     onPress={togglePlayback}
                     accessibilityRole="button"
-                    accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+                    accessibilityLabel={isPlaying ? 'إيقاف مؤقت' : 'تشغيل'}
                 >
                     {isLoading ? (
                         <ActivityIndicator color={Colors.text.inverse} size="small" />
@@ -276,7 +259,7 @@ export default function AudioPlayerControls({
                     onPress={playNextVerse}
                     disabled={currentVerseIndex === verses.length - 1}
                     accessibilityRole="button"
-                    accessibilityLabel="Next verse"
+                    accessibilityLabel="الآية التالية"
                 >
                     <SkipForward
                         size={24}
@@ -289,7 +272,6 @@ export default function AudioPlayerControls({
                 </TouchableOpacity>
             </View>
 
-            {/* Speed Toggle & Progress */}
             <View style={styles.bottomRow}>
                 <TouchableOpacity onPress={toggleSpeed} style={styles.speedButton}>
                     <Text style={[styles.speedText, { color: accentColor }]}>
@@ -297,7 +279,6 @@ export default function AudioPlayerControls({
                     </Text>
                 </TouchableOpacity>
 
-                {/* Progress Bar */}
                 <View style={styles.progressBarBg}>
                     <View
                         style={[
@@ -313,7 +294,7 @@ export default function AudioPlayerControls({
 
             {learningMode && (
                 <Text style={styles.learningModeHint}>
-                    🎓 Learning Mode: Listen, then record your recitation
+                    استمع للآية ثم سجّل تلاوتك
                 </Text>
             )}
         </View>

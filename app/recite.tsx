@@ -37,7 +37,7 @@ import TafseerBottomSheet from '../components/mushaf/TafseerBottomSheet';
 import ReciterBottomSheet from '../components/recite/ReciterBottomSheet';
 import PlaybackScopeSheet, { PlaybackScope } from '../components/recite/PlaybackScopeSheet';
 import UnifiedOptionsSheet from '../components/recite/UnifiedOptionsSheet';
-import BottomSheet from '@gorhom/bottom-sheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { Reciter, getDefaultReciter } from '../lib/audio-reciters';
 import { fetchSurahHeatmap, HeatmapData } from '../lib/heatmap-data';
 import Animated, {
@@ -110,7 +110,7 @@ function ReciteScreenInner() {
 
     // ── Reciter state ────────────────────────────────────────────────────────
     const [selectedReciter, setSelectedReciter] = React.useState<Reciter>(getDefaultReciter());
-    const reciterSheetRef = React.useRef<BottomSheet>(null);
+    const reciterSheetRef = React.useRef<BottomSheetModal>(null);
 
     const handleReciterSelect = React.useCallback((reciter: Reciter) => {
         setSelectedReciter(reciter);
@@ -147,11 +147,12 @@ function ReciteScreenInner() {
     >('idle');
     const [feedback, setFeedback] = React.useState<RecitationAssessment | null>(null);
     const [modalVisible, setModalVisible] = React.useState(false);
+    const [feedbackLocalSaved, setFeedbackLocalSaved] = React.useState(false);
     const sheikhClipUrlRef = React.useRef<string | null>(null);
 
     // Reader Settings — SLICE 2: sheet refs replace modal state
-    const optionsSheetRef = React.useRef<BottomSheet>(null);
-    const scopeSheetRef = React.useRef<BottomSheet>(null);
+    const optionsSheetRef = React.useRef<BottomSheetModal>(null);
+    const scopeSheetRef = React.useRef<BottomSheetModal>(null);
     const [currentFontSize, setCurrentFontSize] = React.useState(fontSize || 24);
 
     // Immersive Mode State (Default to true)
@@ -361,6 +362,7 @@ function ReciteScreenInner() {
 
             setUploadStep('saving');
             setFeedback(result);
+            setFeedbackLocalSaved(false);
             setModalVisible(true);
 
             const outcome = await saveResults(result, {
@@ -371,6 +373,7 @@ function ReciteScreenInner() {
                 verses,
                 getPlanSide,
             });
+            setFeedbackLocalSaved(outcome.localSaved === true);
 
             if (outcome.isSurahCompleted) {
                 if (outcome.hasNextSurah) {
@@ -581,7 +584,7 @@ function ReciteScreenInner() {
                         <TouchableOpacity
                             accessibilityRole="button"
                             accessibilityLabel="الإعدادات"
-                            onPress={() => optionsSheetRef.current?.snapToIndex(0)}
+                                onPress={() => optionsSheetRef.current?.present()}
                             style={styles.headerBtn}
                         >
                             <SettingsIcon
@@ -747,7 +750,7 @@ function ReciteScreenInner() {
                         ]}>
                             <TouchableOpacity
                                 style={[styles.actionBarButton, { backgroundColor: StaticColors.emerald[500] + '1A' }]}
-                                onPress={() => scopeSheetRef.current?.snapToIndex(0)}
+                                onPress={() => scopeSheetRef.current?.present()}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open listen mode"
                             >
@@ -782,6 +785,7 @@ function ReciteScreenInner() {
                         analyzing={analyzing}
                         uploadStep={uploadStep}
                         recordingDuration={vadRecorder.state.elapsedSeconds}
+                        meterHistoryShared={vadRecorder.meterHistoryShared}
                         chunksSent={vadRecorder.state.chunksSent}
                         chunksCompleted={vadRecorder.state.chunksCompleted}
                         isFinishing={vadRecorder.state.isFinishing}
@@ -792,7 +796,7 @@ function ReciteScreenInner() {
                         onSurahEnd={handleNextSurah}
                         onSheikhClipReady={(url) => { sheikhClipUrlRef.current = url; }}
                         selectedReciter={selectedReciter}
-                        onReciterAvatarPress={() => reciterSheetRef.current?.snapToIndex(0)}
+                        onReciterAvatarPress={() => reciterSheetRef.current?.present()}
                         bottomInset={insets.bottom}
                     />
                 </Animated.View>
@@ -803,6 +807,7 @@ function ReciteScreenInner() {
                     onClose={() => setModalVisible(false)}
                     feedback={feedback}
                     saving={saving}
+                    localSaved={feedbackLocalSaved}
                 />
 
                 {/* Ayah Context Menu */}
@@ -856,7 +861,7 @@ function ReciteScreenInner() {
                 fontSize={currentFontSize}
                 heatmapVisible={heatmapVisible}
                 hifzCoverVisible={hifzCoverVisible}
-                onReciterPress={() => reciterSheetRef.current?.snapToIndex(0)}
+                onReciterPress={() => reciterSheetRef.current?.present()}
                 onNightModeToggle={toggleTheme}
                 onFontSizeChange={setCurrentFontSize}
                 onHeatmapToggle={() => setHeatmapVisible(v => !v)}

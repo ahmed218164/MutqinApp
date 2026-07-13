@@ -34,6 +34,7 @@ import GreetingSection from '../../components/dashboard/GreetingSection';
 import StatsBento from '../../components/dashboard/StatsBento';
 import NarrationSwitcher from '../../components/dashboard/NarrationSwitcher';
 import DailyTipCard from '../../components/dashboard/DailyTipCard';
+import TodayFocusStrip from '../../components/dashboard/TodayFocusStrip';
 import { calculateDailyTarget, PlannerData, fetchDueReviews } from '../../lib/planner';
 import { getTodaysWard, DailyWard } from '../../lib/ward';
 import { supabase } from '../../lib/supabase';
@@ -46,6 +47,8 @@ import { useAuth } from '../../lib/auth';
 import { getSurahByNumber } from '../../constants/surahs';
 import { scheduleDailyReminder, getNotificationSettings } from '../../lib/notifications';
 import { StaggerDelay } from '../../constants/animations';
+
+const RECOVERY_REVIEW_THRESHOLD = 8;
 
 // ── Staggered fade-in-up container ──────────────────────────────────────────
 function StaggerIn({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -172,8 +175,6 @@ function DailyWardCard({ ward, accentColor, isHafs, heroGradientColors, onStart,
             {Platform.OS !== 'android' ? (
                 <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
             ) : null}
-            <View style={[styles.heroOrb, { backgroundColor: accentColor }]} />
-
             <View style={styles.heroCardInner}>
                 {/* Ward completed badge */}
                 {ward.completedToday && (
@@ -484,8 +485,17 @@ export default function Dashboard() {
                                 />
                             </StaggerIn>
 
-                            {/* Row 2: Stats Bento */}
                             <StaggerIn delay={StaggerDelay * 2}>
+                                <TodayFocusStrip
+                                    activeNarration={activeNarration}
+                                    dailyPages={dailyWard?.dailyPages ?? plannerData?.dailyTarget ?? 1}
+                                    dueReviews={dueReviews.length}
+                                    accentColor={accentColor}
+                                />
+                            </StaggerIn>
+
+                            {/* Row 2: Stats Bento */}
+                            <StaggerIn delay={StaggerDelay * 3}>
                                 <StatsBento
                                     streak={userProgress?.current_streak || 0}
                                     daysRemaining={plannerData?.daysRemaining || 0}
@@ -497,7 +507,7 @@ export default function Dashboard() {
 
 
                             {/* Row 3: Daily Ward Card */}
-                            <StaggerIn delay={StaggerDelay * 3}>
+                            <StaggerIn delay={StaggerDelay * 4}>
                                 <Text style={styles.sectionTitle}>ورد اليوم</Text>
                                 <DailyWardCard
                                     ward={dailyWard}
@@ -521,7 +531,7 @@ export default function Dashboard() {
 
                             {/* Due Reviews */}
                             {dueReviews.length > 0 && (
-                                <StaggerIn delay={StaggerDelay * 4}>
+                                <StaggerIn delay={StaggerDelay * 5}>
                                     <View style={styles.section}>
                                         <View style={styles.sectionHeader}>
                                             <Text style={styles.sectionTitle}>مراجعات مستحقة</Text>
@@ -530,8 +540,22 @@ export default function Dashboard() {
                                             </View>
                                         </View>
 
+                                        {dueReviews.length >= RECOVERY_REVIEW_THRESHOLD && (
+                                            <View style={styles.recoveryCard}>
+                                                <View style={styles.recoveryIcon}>
+                                                    <Zap size={18} color={Colors.gold[300]} />
+                                                </View>
+                                                <View style={styles.recoveryTextBlock}>
+                                                    <Text style={styles.recoveryTitle}>خطة استدراك خفيفة</Text>
+                                                    <Text style={styles.recoveryText}>
+                                                        ابدأ بأهم 5 مواضع الآن، ثم وزع الباقي على الأيام القادمة.
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        )}
+
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalContent}>
-                                            {dueReviews.map((review, index) => {
+                                            {dueReviews.slice(0, dueReviews.length >= RECOVERY_REVIEW_THRESHOLD ? 5 : dueReviews.length).map((review, index) => {
                                                 const surah = getSurahByNumber(review.surah_number);
                                                 return (
                                                     <Card
@@ -561,7 +585,7 @@ export default function Dashboard() {
                                 </StaggerIn>
                             )}
 
-                            {/* Daily Tip Card */}
+                            {/* فائدة اليوم */}
                             <StaggerIn delay={StaggerDelay * 5}>
                                 <DailyTipCard activeNarration={activeNarration} delay={0} />
                             </StaggerIn>
@@ -623,7 +647,7 @@ const styles = StyleSheet.create({
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
         marginBottom: Spacing.md,
-        letterSpacing: -0.3,
+        letterSpacing: 0,
     },
     // ── Hero Focus Card ──
     heroCardWrapper: {
@@ -633,15 +657,6 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(52, 211, 153, 0.2)',
         ...Shadows.glowEmerald,
         marginBottom: Spacing.lg,
-    },
-    heroOrb: {
-        position: 'absolute',
-        top: -40,
-        right: -40,
-        width: 130,
-        height: 130,
-        borderRadius: BorderRadius.full,
-        opacity: 0.08,
     },
     heroCardInner: {
         padding: Spacing.xl,
@@ -671,14 +686,14 @@ const styles = StyleSheet.create({
     focusLabel: {
         fontSize: 10,
         fontWeight: '700' as const,
-        letterSpacing: 1.5,
+        letterSpacing: 0,
         textTransform: 'uppercase',
     },
     focusSurah: {
         fontSize: Typography.fontSize['3xl'],
         fontWeight: '800' as const,
         color: Colors.text.inverse,
-        letterSpacing: -0.5,
+        letterSpacing: 0,
     },
     focusIconCircle: {
         width: 44,
@@ -720,6 +735,41 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     // ── Review cards ──
+    recoveryCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        backgroundColor: 'rgba(251,191,36,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(251,191,36,0.25)',
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    recoveryIcon: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(251,191,36,0.14)',
+    },
+    recoveryTextBlock: {
+        flex: 1,
+    },
+    recoveryTitle: {
+        color: Colors.gold[300],
+        fontSize: Typography.fontSize.base,
+        fontWeight: '700',
+        textAlign: 'right',
+    },
+    recoveryText: {
+        color: Colors.neutral[300],
+        fontSize: Typography.fontSize.sm,
+        lineHeight: 20,
+        marginTop: 2,
+        textAlign: 'right',
+    },
     horizontalContent: {
         gap: Spacing.md,
         paddingRight: Spacing.lg,

@@ -7,6 +7,7 @@
 import { supabase } from './supabase';
 import { generateWithFallback } from './ai-models';
 import { AI_MODELS } from './ai-models';
+import { getLocalDay } from './date-utils';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -41,21 +42,21 @@ export interface WeeklyReport {
 function getWeekStart(): string {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay()); // Sunday
-    return d.toISOString().split('T')[0];
+    return getLocalDay(d);
 }
 
 /** Returns ISO date string for coming Saturday (end of the week). */
 function getWeekEnd(): string {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay() + 6); // Saturday
-    return d.toISOString().split('T')[0];
+    return getLocalDay(d);
 }
 
 /** Returns Sunday of N weeks ago. */
 function getWeeksAgo(n: number): string {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay() - n * 7);
-    return d.toISOString().split('T')[0];
+    return getLocalDay(d);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ async function collectWeeklyStats(userId: string): Promise<WeeklyStats> {
             .from('review_schedule')
             .select('surah', { count: 'exact', head: true })
             .eq('user_id', userId)
-            .lte('next_review', new Date().toISOString().split('T')[0]),
+            .lte('next_review', getLocalDay()),
 
         // User progress (streak)
         supabase

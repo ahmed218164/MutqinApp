@@ -1,9 +1,9 @@
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     ScrollView,
     Alert,
@@ -14,6 +14,7 @@ import ModernBackground from '../components/ui/ModernBackground';
 import Card from '../components/ui/Card';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { getLocalDay } from '../lib/date-utils';
 import {
     generatePlacementTest,
     calculatePlacementResult,
@@ -78,15 +79,15 @@ export default function PlacementTestScreen() {
 
             const reviewEntries = failedAyahs.map(ayah => ({
                 user_id: user.id,
-                surah: ayah.surah,
-                last_reviewed: new Date().toISOString().split('T')[0],
-                next_review: new Date().toISOString().split('T')[0],
+                surah_number: ayah.surah,
+                last_reviewed: getLocalDay(),
+                next_review: getLocalDay(),
                 mistake_count: 1,
             }));
 
             const { error } = await supabase
                 .from('review_schedule')
-                .upsert(reviewEntries, { onConflict: 'user_id,surah' });
+                .upsert(reviewEntries, { onConflict: 'user_id,surah_number' });
 
             if (error) throw error;
 

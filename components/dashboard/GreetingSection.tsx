@@ -22,18 +22,18 @@ export default function GreetingSection({ userName, activeNarration = 'Hafs', de
 
     const getGreeting = () => {
         const hour = new Date().getHours();
-        let timeGreeting = 'Good Morning';
-        if (hour >= 12 && hour < 18) timeGreeting = 'Good Afternoon';
-        else if (hour >= 18) timeGreeting = 'Good Evening';
+        let timeGreeting = 'صباح الخير';
+        if (hour >= 12 && hour < 18) timeGreeting = 'مساء الخير';
+        else if (hour >= 18) timeGreeting = 'ليلة مباركة';
 
         return `${timeGreeting},`;
     };
 
     const getMotivation = () => {
         if (activeNarration === 'Shubah') {
-            return "Mastering the nuances of Shu'bah elevates your recitation.";
+            return 'إتقان الفروق الدقيقة في رواية شعبة يرفع جودة تلاوتك.';
         }
-        return "Consistency in Hafs builds a foundation of light.";
+        return 'القليل الثابت مع القرآن يبني حفظًا راسخًا بإذن الله.';
     };
 
     return (
@@ -54,21 +54,24 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.md,
     },
     greeting: {
-        fontSize: Typography.fontSize.xl,
-        color: Colors.emerald[100],
+        fontSize: Typography.fontSize.base,
+        color: Colors.emerald[300],
         marginBottom: Spacing.xs,
         fontWeight: Typography.fontWeight.medium,
+        textAlign: 'right',
     },
     name: {
-        fontSize: Typography.fontSize['4xl'],
+        fontSize: Typography.fontSize['3xl'],
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
-        letterSpacing: -0.5,
+        letterSpacing: 0,
         marginBottom: Spacing.sm,
+        textAlign: 'right',
     },
     motivation: {
         fontSize: Typography.fontSize.sm,
-        color: Colors.text.tertiary,
-        fontStyle: 'italic',
+        color: Colors.neutral[300],
+        lineHeight: 21,
+        textAlign: 'right',
     },
 });

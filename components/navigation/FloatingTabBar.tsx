@@ -56,7 +56,6 @@ function TabItem({
         scaleVal.value = withSpring(1, { damping: 10, stiffness: 180 });
     };
 
-    // Morphing highlight pill behind the icon
     const highlightStyle = useAnimatedStyle(() => {
         const scale = interpolate(focusProgress.value, [0, 1], [0.6, 1]);
         const opacity = interpolate(focusProgress.value, [0, 1], [0, 1]);
@@ -71,7 +70,6 @@ function TabItem({
         };
     });
 
-    // Active glowing dot below icon
     const dotStyle = useAnimatedStyle(() => {
         const opacity = interpolate(focusProgress.value, [0, 1], [0, 1]);
         const scaleD = interpolate(focusProgress.value, [0, 1], [0, 1]);
@@ -81,12 +79,10 @@ function TabItem({
         };
     });
 
-    // Icon color interpolation (gold when active, muted when not)
     const iconContainerStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scaleVal.value }],
     }));
 
-    // Label opacity
     const labelStyle = useAnimatedStyle(() => ({
         opacity: interpolate(focusProgress.value, [0, 1], [0, 1]),
         transform: [{ translateY: interpolate(focusProgress.value, [0, 1], [4, 0]) }],
@@ -108,43 +104,29 @@ function TabItem({
             style={styles.tabItem}
             activeOpacity={1}
         >
-            {/* Glow halo behind active tab */}
-            {Platform.OS === 'ios' && (
-                <Animated.View
-                    style={[
-                        styles.glowHalo,
-                        highlightStyle,
-                    ]}
-                />
-            )}
-
-            {/* Morphing highlight pill (visible on Android too) */}
             <Animated.View style={[styles.iconHighlight, highlightStyle]}>
                 <View style={StyleSheet.absoluteFill} />
             </Animated.View>
 
-            {/* Icon */}
             <Animated.View style={[styles.iconWrapper, iconContainerStyle]}>
                 {Icon && Icon({
                     focused: isFocused,
-                    color: isFocused ? Colors.gold[400] : Colors.neutral[500],
+                    color: isFocused ? Colors.emerald[300] : Colors.neutral[500],
                     size: 22,
                 })}
             </Animated.View>
 
-            {/* Label fades in below icon for active tab */}
             <Animated.Text style={[styles.label, labelStyle]}>
                 {typeof label === 'string' ? label : ''}
             </Animated.Text>
 
-            {/* Glowing active indicator dot */}
             <Animated.View style={[styles.activeDot, dotStyle]} />
         </AnimatedTouchableOpacity>
     );
 }
 
 export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-    // Sliding "active pill" that moves between tabs — "Dynamic Island" morphing pill
+    // Active pill position between visible tabs.
     const pillX = useSharedValue(0);
     const tabCount = state.routes.filter(r => (descriptors[r.key].options as any).href !== null).length;
 
@@ -226,21 +208,20 @@ const styles = StyleSheet.create({
         left: Spacing.xl,
         right: Spacing.xl,
         height: 72,
-        borderRadius: BorderRadius['3xl'],
+        borderRadius: BorderRadius.xl,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(52, 211, 153, 0.18)', // subtle emerald border
-        // Soft glow shadow
-        shadowColor: Colors.emerald[400],
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 24,
+        borderColor: 'rgba(148, 163, 184, 0.18)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.28,
+        shadowRadius: 18,
     },
     containerElevation: {
         elevation: 24,
     },
     androidFallback: {
-        backgroundColor: 'rgba(4, 47, 46, 0.97)',
+        backgroundColor: 'rgba(8, 13, 24, 0.97)',
     },
     innerRing: {
         position: 'absolute',
@@ -248,7 +229,7 @@ const styles = StyleSheet.create({
         left: 1,
         right: 1,
         bottom: 1,
-        borderRadius: BorderRadius['3xl'] - 1,
+        borderRadius: BorderRadius.xl - 1,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.06)',
         pointerEvents: 'none',
@@ -268,19 +249,11 @@ const styles = StyleSheet.create({
         position: 'relative',
         paddingBottom: 8,
     },
-    glowHalo: {
-        position: 'absolute',
-        top: '50%',
-        alignSelf: 'center',
-        marginTop: -18,
-        backgroundColor: 'rgba(251, 191, 36, 0.12)',
-        borderRadius: 21,
-    },
     iconHighlight: {
         position: 'absolute',
         alignSelf: 'center',
         top: 12,
-        backgroundColor: 'rgba(251, 191, 36, 0.14)',
+        backgroundColor: 'rgba(16, 185, 129, 0.16)',
         borderRadius: 21,
     },
     iconWrapper: {
@@ -289,10 +262,10 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 10.5,
-        color: Colors.gold[400],
+        color: Colors.emerald[200],
         fontWeight: '700' as const,
         marginTop: 3,
-        letterSpacing: 0.1,
+        letterSpacing: 0,
         zIndex: 2,
         // Removed textTransform: 'uppercase' — breaks Arabic text rendering
     },
@@ -302,9 +275,8 @@ const styles = StyleSheet.create({
         width: 4,
         height: 4,
         borderRadius: 2,
-        backgroundColor: Colors.gold[400],
-        // Small shadow on the dot itself
-        shadowColor: Colors.gold[400],
+        backgroundColor: Colors.emerald[300],
+        shadowColor: Colors.emerald[300],
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.9,
         shadowRadius: 5,

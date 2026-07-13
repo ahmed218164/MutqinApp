@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { sendAchievementNotification } from './notifications';
+import { diffLocalDays, getLocalDay, parseLocalDay } from './date-utils';
 
 export interface Achievement {
     id: string;
@@ -87,8 +88,33 @@ export function getCurrentLevelProgress(totalXP: number): { current: number; nee
 }
 
 // Award XP to user — atomic version (no race condition)
-export async function awardXP(userId: string, xpAmount: number, reason: string) {
+export async function awardXP(userId: string, xpAmount: number, reason: string, eventId?: string) {
     try {
+        if (eventId) {
+            const { data: eventResult, error: eventError } = await supabase.rpc('award_xp_for_event', {
+                p_user_id: userId,
+                p_amount: xpAmount,
+                p_reason: reason,
+                p_event_id: eventId,
+            });
+
+            if (!eventError && eventResult) {
+                const row = Array.isArray(eventResult) ? eventResult[0] : eventResult;
+                const { new_total_xp, new_level, leveled_up, already_awarded } = (row ?? {}) as any;
+                if (leveled_up) {
+                    await sendAchievementNotification(
+                        `المستوى ${new_level}!`,
+                        `وصلت إلى المستوى ${new_level}!`,
+                        0
+                    );
+                }
+                console.log(`✅ Event XP +${xpAmount} awarded=${!already_awarded} total=${new_total_xp} [${reason}]`);
+                return { newTotalXP: new_total_xp, newLevel: new_level, leveledUp: leveled_up, alreadyAwarded: already_awarded };
+            }
+
+            if (eventError) console.warn('[awardXP] event RPC unavailable, using standard award:', eventError.message);
+        }
+
         // ── Preferred: server-side atomic increment (prevents race conditions) ──────
         // The RPC does: UPDATE user_progress SET total_xp = total_xp + p_amount
         // This is atomic at the DB level — safe for concurrent calls.
@@ -370,7 +396,10 @@ export async function getUserProgress(userId: string): Promise<UserProgress | nu
 
 // Update streak — safe version with same-day guard
 // Returns 'incremented' | 'already_done' | 'reset' | 'error'
-export async function updateStreak(userId: string): Promise<'incremented' | 'already_done' | 'reset' | 'error'> {
+export async function updateStreak(
+    userId: string,
+    activityLocalDay: string = getLocalDay()
+): Promise<'incremented' | 'already_done' | 'reset' | 'error'> {
     try {
         const { data: progress } = await supabase
             .from('user_progress')
@@ -382,9 +411,9 @@ export async function updateStreak(userId: string): Promise<'incremented' | 'alr
 
         // Use LOCAL date (not UTC) to avoid timezone issues.
         // e.g. user in UTC+3 practicing at 23:00 local → UTC gives next day → streak breaks.
-        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local TZ
+        const todayStr = activityLocalDay;
         const lastUpdateStr = progress.updated_at
-            ? new Date(progress.updated_at).toLocaleDateString('en-CA')
+            ? getLocalDay(new Date(progress.updated_at))
             : null;
 
         // ── Guard: already updated today → skip silently ──────────────────────
@@ -396,11 +425,7 @@ export async function updateStreak(userId: string): Promise<'incremented' | 'alr
         // ── Detect break: last update was >1 day ago → reset streak ──────────
         let newStreak: number;
         if (lastUpdateStr) {
-            const lastDate = new Date(lastUpdateStr);
-            const today   = new Date(todayStr);
-            const diffDays = Math.round(
-                (today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)
-            );
+            const diffDays = diffLocalDays(lastUpdateStr, todayStr);
             // Only consecutive (diff == 1) keeps the streak; anything more resets
             newStreak = diffDays === 1 ? progress.current_streak + 1 : 1;
         } else {
@@ -416,7 +441,7 @@ export async function updateStreak(userId: string): Promise<'incremented' | 'alr
                 current_streak: newStreak,
                 longest_streak: newLongestStreak,
                 // updated_at acts as "last_activity_date" — keep it date-only precision
-                updated_at: new Date().toISOString(),
+                updated_at: parseLocalDay(activityLocalDay).toISOString(),
             })
             .eq('user_id', userId);
 

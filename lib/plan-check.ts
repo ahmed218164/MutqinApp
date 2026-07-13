@@ -19,27 +19,26 @@
 import { supabase } from './supabase';
 
 /**
- * Returns `true` if the user has any kind of memorization plan configured.
+ * Returns `true` if the user has a usable daily ward plan configured.
  * On network error, returns `true` to avoid blocking the user.
  */
 export async function checkHasPlan(userId: string): Promise<boolean> {
     try {
-        const [userPlansResult, wardPlanResult] = await Promise.all([
-            supabase
-                .from('user_plans')
-                .select('id')
-                .eq('user_id', userId)
-                .limit(1),
-            supabase
-                .from('memorization_plan')
-                .select('id')
-                .eq('user_id', userId)
-                .limit(1),
-        ]);
+        const { data } = await supabase
+            .from('memorization_plan')
+            .select('direction, daily_pages, fwd_surah, bwd_surah')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        const hasUserPlan = !!(userPlansResult.data && userPlansResult.data.length > 0);
-        const hasWardPlan = !!(wardPlanResult.data && wardPlanResult.data.length > 0);
-        return hasUserPlan || hasWardPlan;
+        if (!data || !data.daily_pages || data.daily_pages < 1) return false;
+
+        const direction = data.direction ?? 'forward';
+        const needsForward = direction === 'forward' || direction === 'both';
+        const needsBackward = direction === 'backward' || direction === 'both';
+        const hasForward = !needsForward || (data.fwd_surah >= 1 && data.fwd_surah <= 114);
+        const hasBackward = !needsBackward || (data.bwd_surah >= 1 && data.bwd_surah <= 114);
+
+        return hasForward && hasBackward;
     } catch {
         // On network error, don't block the user
         return true;

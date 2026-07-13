@@ -1,10 +1,10 @@
 import * as React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
-    SafeAreaView,
     TouchableOpacity,
     Dimensions,
     Alert,
@@ -28,6 +28,7 @@ import {
     getOrGenerateWeeklyReport,
     WeeklyReport,
 } from '../../lib/weekly-report';
+import { getLocalDay } from '../../lib/date-utils';
 
 interface DailyLog {
     date: string;
@@ -91,7 +92,7 @@ export default function ProfileScreen() {
             // ── Slice last 90 days for Heatmap ────────────────────────────────
             const ninetyDaysAgo = new Date();
             ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-            const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
+            const ninetyDaysAgoStr = getLocalDay(ninetyDaysAgo);
             const recentLogs = allLogs.filter(l => l.date >= ninetyDaysAgoStr);
 
             // ── Line Chart: last 7 days ───────────────────────────────────────
@@ -99,7 +100,7 @@ export default function ProfileScreen() {
             for (let i = 6; i >= 0; i--) {
                 const date = new Date();
                 date.setDate(date.getDate() - i);
-                last7Days.push(date.toISOString().split('T')[0]);
+                last7Days.push(getLocalDay(date));
             }
             const chartData = last7Days.map(date => {
                 const log = recentLogs.find(l => l.date === date);
@@ -113,7 +114,7 @@ export default function ProfileScreen() {
                 count: log.pages_completed,
             }));
             if (contributions.length === 0) {
-                contributions.push({ date: new Date().toISOString().split('T')[0], count: 0 });
+                contributions.push({ date: getLocalDay(), count: 0 });
             }
             setContributionData(contributions);
 
@@ -124,8 +125,8 @@ export default function ProfileScreen() {
             thisWeekStart.setDate(today.getDate() - dayOfWeek);
             const lastWeekStart = new Date(thisWeekStart);
             lastWeekStart.setDate(thisWeekStart.getDate() - 7);
-            const thisWeekStr = thisWeekStart.toISOString().split('T')[0];
-            const lastWeekStr = lastWeekStart.toISOString().split('T')[0];
+            const thisWeekStr = getLocalDay(thisWeekStart);
+            const lastWeekStr = getLocalDay(lastWeekStart);
 
             const thisWeekPages = recentLogs
                 .filter(l => l.date >= thisWeekStr)
@@ -205,7 +206,7 @@ export default function ProfileScreen() {
         for (let i = 0; i < 365; i++) {
             const checkDate = new Date(today);
             checkDate.setDate(checkDate.getDate() - i);
-            const dateStr = checkDate.toLocaleDateString('en-CA'); // Local timezone
+            const dateStr = getLocalDay(checkDate);
 
             const hasActivity = logs.some(log => log.date === dateStr && log.pages_completed > 0);
             if (hasActivity) {

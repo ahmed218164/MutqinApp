@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { supabase } from './supabase';
-import { checkHasPlan } from './plan-check';
+import NetInfo from '@react-native-community/netinfo';
 import { Session, User } from '@supabase/supabase-js';
 import { useRouter, useSegments } from 'expo-router';
+import { supabase } from './supabase';
+import { checkHasPlan } from './plan-check';
+import { isNetworkError, warnNetworkOnce } from './network-errors';
 
 interface AuthContextType {
     user: User | null;
@@ -28,7 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (navigatingRef.current) return;
         navigatingRef.current = true;
         router.replace(path);
-        setTimeout(() => { navigatingRef.current = false; }, 1000);
+        setTimeout(() => {
+            navigatingRef.current = false;
+        }, 1000);
     }, [router]);
 
     React.useEffect(() => {
@@ -36,22 +40,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         async function initializeAuth() {
             try {
-                console.log('🔐 Initializing auth...');
-                
-                // Get initial session from AsyncStorage
+                console.log('[Auth] Initializing auth...');
+
+                const network = await NetInfo.fetch();
+                if (network.isConnected === false || network.isInternetReachable === false) {
+                    console.warn('[Auth] Offline at startup. Skipping remote session refresh.');
+                    return;
+                }
+
                 const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-                
+
                 if (error) {
-                    console.error('Error getting session:', error);
+                    if (isNetworkError(error)) {
+                        warnNetworkOnce('Auth', error);
+                    } else {
+                        console.error('[Auth] Error getting session:', error);
+                    }
                 } else if (initialSession && mounted) {
-                    console.log('✅ Session restored from storage');
+                    console.log('[Auth] Session restored from storage');
                     setSession(initialSession);
                     setUser(initialSession.user);
                 } else {
-                    console.log('ℹ️ No existing session found');
+                    console.log('[Auth] No existing session found');
                 }
             } catch (error) {
-                console.error('Error initializing auth:', error);
+                if (isNetworkError(error)) {
+                    warnNetworkOnce('Auth', error);
+                } else {
+                    console.error('[Auth] Error initializing auth:', error);
+                }
             } finally {
                 if (mounted) {
                     setLoading(false);
@@ -62,35 +79,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         initializeAuth();
 
-        // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, newSession) => {
-                console.log('🔄 Auth state changed:', event);
-                
+                console.log('[Auth] State changed:', event);
+
                 if (mounted) {
                     setSession(newSession);
                     setUser(newSession?.user ?? null);
                     setLoading(false);
                 }
 
-                // Auto-navigate based on auth state
-            if (event === 'SIGNED_IN' && newSession) {
-                console.log('✅ User signed in, checking for plan...');
+                if (event === 'SIGNED_IN' && newSession) {
+                    console.log('[Auth] User signed in, checking for plan...');
+                    const hasPlan = await checkHasPlan(newSession.user.id);
 
-                const hasPlan = await checkHasPlan(newSession.user.id);
-
-                if (hasPlan) {
-                    console.log('✅ User has plan, navigating to dashboard');
-                    navigateSafely('/(tabs)');
-                } else {
-                    console.log('⚠️ No plan found, redirecting to plan screen');
-                    navigateSafely('/(tabs)/plan');
-                }
-            } else if (event === 'SIGNED_OUT') {
-                console.log('👋 User signed out, navigating to login');
-                navigateSafely('/login');
+                    if (hasPlan) {
+                        navigateSafely('/(tabs)');
+                    } else {
+                        navigateSafely('/(tabs)');
+                    }
+                } else if (event === 'SIGNED_OUT') {
+                    navigateSafely('/login');
                 } else if (event === 'TOKEN_REFRESHED') {
-                    console.log('🔄 Token refreshed');
+                    console.log('[Auth] Token refreshed');
                 }
             }
         );
@@ -99,47 +110,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, []);
+    }, [navigateSafely]);
 
-    // Protected route navigation — only handles the SIGN-OUT guard.
-    // SIGN-IN navigation is handled by onAuthStateChange above to avoid
-    // a race condition where both fire simultaneously and cause double-navigation.
     React.useEffect(() => {
         if (initializing) return;
 
         const isAuthPage = segments[0] === 'login' || segments[0] === 'signup';
 
         if (!user && !isAuthPage) {
-            // User is not signed in but trying to access protected routes
             navigateSafely('/login');
         }
-        // Note: we intentionally do NOT redirect signed-in users away from auth pages
-        // here — that's already handled by onAuthStateChange('SIGNED_IN').
     }, [user, segments, initializing, navigateSafely]);
 
     const signIn = async (email: string, password: string) => {
         setLoading(true);
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
 
             if (error) {
                 let friendlyMessage = 'فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.';
-                
+
                 if (error.message.includes('Invalid login credentials')) {
                     friendlyMessage = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
                 } else if (error.message.includes('Email not confirmed')) {
-                    friendlyMessage = 'يرجى تأكيد بريدك الإلكتروني أولاً.';
-                } else if (error.message.includes('network')) {
-                    friendlyMessage = 'مشكلة في الاتصال بالإنترنت. يرجى المحاولة مرة أخرى.';
+                    friendlyMessage = 'يرجى تأكيد بريدك الإلكتروني أولًا.';
+                } else if (isNetworkError(error)) {
+                    friendlyMessage = 'تعذر الاتصال بالإنترنت. تحقق من الشبكة ثم حاول مرة أخرى.';
                 }
 
                 throw new Error(friendlyMessage);
             }
 
-            console.log('✅ Sign in successful');
+            console.log('[Auth] Sign in successful');
         } catch (error) {
             setLoading(false);
             throw error;
@@ -149,26 +151,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signUp = async (email: string, password: string) => {
         setLoading(true);
         try {
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
-            });
+            const { data, error } = await supabase.auth.signUp({ email, password });
 
             if (error) {
                 let friendlyMessage = 'فشل إنشاء الحساب. يرجى المحاولة مرة أخرى.';
-                
+
                 if (error.message.includes('already registered')) {
                     friendlyMessage = 'البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.';
                 } else if (error.message.includes('Password should be')) {
-                    friendlyMessage = 'كلمة المرور ضعيفة جداً. يجب أن تكون 6 أحرف على الأقل.';
-                } else if (error.message.includes('network')) {
-                    friendlyMessage = 'مشكلة في الاتصال بالإنترنت. يرجى المحاولة مرة أخرى.';
+                    friendlyMessage = 'كلمة المرور ضعيفة جدًا. يجب أن تكون 6 أحرف على الأقل.';
+                } else if (isNetworkError(error)) {
+                    friendlyMessage = 'تعذر الاتصال بالإنترنت. تحقق من الشبكة ثم حاول مرة أخرى.';
                 }
 
                 throw new Error(friendlyMessage);
             }
 
-            // Create profile for new user
             if (data.user) {
                 try {
                     const { error: profileError } = await supabase.from('profiles').insert({
@@ -177,14 +175,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     });
 
                     if (profileError && !profileError.message.includes('duplicate')) {
-                        console.warn('Profile creation warning:', profileError);
+                        console.warn('[Auth] Profile creation warning:', profileError);
                     }
                 } catch (profileError) {
-                    console.warn('Profile creation error:', profileError);
+                    console.warn('[Auth] Profile creation error:', profileError);
                 }
             }
 
-            console.log('✅ Sign up successful');
+            console.log('[Auth] Sign up successful');
         } catch (error) {
             setLoading(false);
             throw error;
@@ -198,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (error) {
                 throw new Error('فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.');
             }
-            console.log('👋 Sign out successful');
+            console.log('[Auth] Sign out successful');
         } catch (error) {
             setLoading(false);
             throw error;

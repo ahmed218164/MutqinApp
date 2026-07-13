@@ -42,7 +42,7 @@ export default function Index() {
 
     if (user) {
         if (hasPlan === false) {
-            return <Redirect href="/(tabs)/plan" />;
+            return <Redirect href="/(tabs)" />;
         }
         return <Redirect href="/(tabs)" />;
     }

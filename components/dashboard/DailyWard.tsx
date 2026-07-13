@@ -200,12 +200,12 @@ const styles = StyleSheet.create({
     },
     ayahRange: {
         fontSize: Typography.fontSize.base,
-        color: Colors.text.secondary,
+        color: Colors.neutral[300],
         marginBottom: Spacing.xs,
     },
     estimatedTime: {
         fontSize: Typography.fontSize.sm,
-        color: Colors.text.tertiary,
+        color: Colors.neutral[400],
     },
     actions: {
         flexDirection: 'row',
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     lockMessage: {
         marginTop: Spacing.md,
         fontSize: Typography.fontSize.sm,
-        color: Colors.text.tertiary,
+        color: Colors.neutral[400],
         textAlign: 'center',
     },
 });

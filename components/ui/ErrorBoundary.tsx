@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: Spacing['2xl'],
-        backgroundColor: Colors.neutral[50],
+        backgroundColor: Colors.neutral[950],
     },
     emoji: {
         fontSize: 64,
@@ -77,19 +77,19 @@ const styles = StyleSheet.create({
     title: {
         fontSize: Typography.fontSize['2xl'],
         fontWeight: Typography.fontWeight.bold,
-        color: Colors.text.primary,
+        color: Colors.neutral[50],
         marginBottom: Spacing.md,
         textAlign: 'center',
     },
     message: {
         fontSize: Typography.fontSize.base,
-        color: Colors.text.secondary,
+        color: Colors.neutral[300],
         textAlign: 'center',
         marginBottom: Spacing.xl,
         lineHeight: 24,
     },
     errorDetails: {
-        backgroundColor: Colors.neutral[100],
+        backgroundColor: Colors.neutral[900],
         padding: Spacing.md,
         borderRadius: BorderRadius.lg,
         marginBottom: Spacing.xl,
