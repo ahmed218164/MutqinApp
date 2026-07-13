@@ -1,4 +1,4 @@
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Home, BookOpen, Target, AlertCircle, User } from 'lucide-react-native';
 import FloatingTabBar from '../../components/navigation/FloatingTabBar';
 import * as React from 'react';
@@ -8,7 +8,6 @@ import { checkHasPlan } from '../../lib/plan-check';
 
 export default function TabLayout() {
     const { user } = useAuth();
-    const router = useRouter();
 
     // null = loading | true = has plan | false = no plan
     const [hasPlan, setHasPlan] = React.useState<boolean | null>(null);
@@ -53,17 +52,6 @@ export default function TabLayout() {
         };
     }, [user]);
 
-    // ── Tab press guard ───────────────────────────────────────────────────────
-    // null = still checking (allow through — avoid false redirect)
-    // true  = has plan      (allow through)
-    // false = no plan       (redirect to plan setup)
-    function guardedTabPress(e: any) {
-        if (hasPlan === false) {
-            (e as any).preventDefault();
-            router.navigate('/(tabs)/plan');
-        }
-    }
-
     return (
         <Tabs
             tabBar={(props) => <FloatingTabBar {...props} />}
@@ -78,7 +66,14 @@ export default function TabLayout() {
                         <Home color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={{ tabPress: guardedTabPress }}
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        if (hasPlan === false) {
+                            (e as any).preventDefault();
+                            navigation.navigate('plan');
+                        }
+                    },
+                })}
             />
 
             {/* ── خطتي (always accessible — this is where new users land) ── */}
@@ -101,7 +96,14 @@ export default function TabLayout() {
                         <BookOpen color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={{ tabPress: guardedTabPress }}
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        if (hasPlan === false) {
+                            (e as any).preventDefault();
+                            navigation.navigate('plan');
+                        }
+                    },
+                })}
             />
 
             {/* ── أخطائي ────────────────────────────────────────────────── */}
@@ -113,7 +115,14 @@ export default function TabLayout() {
                         <AlertCircle color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={{ tabPress: guardedTabPress }}
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        if (hasPlan === false) {
+                            (e as any).preventDefault();
+                            navigation.navigate('plan');
+                        }
+                    },
+                })}
             />
 
             {/* ── ملفي ──────────────────────────────────────────────────── */}
@@ -125,7 +134,14 @@ export default function TabLayout() {
                         <User color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={{ tabPress: guardedTabPress }}
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        if (hasPlan === false) {
+                            (e as any).preventDefault();
+                            navigation.navigate('plan');
+                        }
+                    },
+                })}
             />
 
             {/* Hidden screens (not shown in tab bar) */}

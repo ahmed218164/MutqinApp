@@ -42,7 +42,6 @@ SplashScreen.preventAutoHideAsync();
 // Ignore specific warnings
 LogBox.ignoreLogs([
     'expo-notifications: Android Push notifications',
-    'No route named "recite" exists'
 ]);
 
 function NotificationSetup() {
@@ -116,6 +115,13 @@ export default function RootLayout() {
                                         <Stack.Screen name="(tabs)" />
                                         <Stack.Screen name="settings" />
                                         <Stack.Screen name="search" />
+                                        <Stack.Screen name="recite" />
+                                        <Stack.Screen name="bookmarks" />
+                                        <Stack.Screen name="free-recite" />
+                                        <Stack.Screen name="notifications" />
+                                        <Stack.Screen name="placement-test" />
+                                        <Stack.Screen name="plan-setup" />
+                                        <Stack.Screen name="about" />
                                     </Stack>
                                 </AuthProvider>
                             </NetworkProvider>
