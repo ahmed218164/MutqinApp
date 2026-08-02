@@ -35,6 +35,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useAyatDB } from '../lib/SQLiteProvider';
 import { searchAyat, countOccurrences, SearchOptions } from '../lib/sqlite-db';
 import { SURAHS, getSurahByNumber } from '../constants/surahs';
+import { performSemanticQuranSearch } from '../lib/ai-features-suite';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Arabic helpers
@@ -292,6 +293,7 @@ export default function SearchScreen() {
     const [suraFilter, setSuraFilter] = React.useState<number | null>(null);
     const [juzFilter,  setJuzFilter]  = React.useState<number | null>(null);
     const [showFilter, setShowFilter] = React.useState(false);
+    const [searchMode, setSearchMode] = React.useState<'text' | 'semantic'>('text');
 
     const inputRef     = React.useRef<TextInput>(null);
     const debounceRef  = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -324,35 +326,51 @@ export default function SearchScreen() {
         setSearching(true);
         debounceRef.current = setTimeout(async () => {
             try {
-                const normalized = normalizeArabic(trimmed);
-                const opts: SearchOptions = {
-                    suraFilter: suraFilter ?? undefined,
-                    juzFilter:  juzFilter  ?? undefined,
-                    limit: 60,
-                };
+                if (searchMode === 'semantic') {
+                    const semanticHits = await performSemanticQuranSearch(trimmed);
+                    const mapped: SearchResult[] = semanticHits.map((h, i) => ({
+                        id: i + 1,
+                        sura: h.surahNumber,
+                        aya: h.ayahNumber,
+                        page: Math.min(604, Math.max(1, Math.floor(h.surahNumber * 5.3))),
+                        goza: Math.min(30, Math.max(1, Math.floor(h.surahNumber / 3.8))),
+                        text: h.text,
+                        textSearch: h.text,
+                        surahName: h.surahName,
+                        hits: 1,
+                    }));
+                    setResults(mapped);
+                    setTotalHits(mapped.length);
+                } else {
+                    const normalized = normalizeArabic(trimmed);
+                    const opts: SearchOptions = {
+                        suraFilter: suraFilter ?? undefined,
+                        juzFilter:  juzFilter  ?? undefined,
+                        limit: 60,
+                    };
 
-                const rows = searchAyat(db, normalized, opts);
-                const totalCount = countOccurrences(db, normalized, {
-                    suraFilter: opts.suraFilter,
-                    juzFilter:  opts.juzFilter,
-                });
+                    const rows = searchAyat(db, normalized, opts);
+                    const totalCount = countOccurrences(db, normalized, {
+                        suraFilter: opts.suraFilter,
+                        juzFilter:  opts.juzFilter,
+                    });
 
-                const mapped: SearchResult[] = rows.map(row => ({
-                    id:        row.id,
-                    sura:      row.sura,
-                    aya:       row.aya,
-                    page:      row.page,
-                    goza:      row.goza,
-                    text:      row.text ?? '',
-                    textSearch: row.text_search ?? '',
-                    surahName: getSurahByNumber(row.sura)?.name ?? `سورة ${row.sura}`,
-                    hits:      countInText(row.text_search ?? '', normalized),
-                }));
+                    const mapped: SearchResult[] = rows.map(row => ({
+                        id:        row.id,
+                        sura:      row.sura,
+                        aya:       row.aya,
+                        page:      row.page,
+                        goza:      row.goza,
+                        text:      row.text ?? '',
+                        textSearch: row.text_search ?? '',
+                        surahName: getSurahByNumber(row.sura)?.name ?? `سورة ${row.sura}`,
+                        hits:      countInText(row.text_search ?? '', normalized),
+                    }));
 
-                setResults(mapped);
-                setTotalHits(totalCount);
+                    setResults(mapped);
+                    setTotalHits(totalCount);
+                }
 
-                // احفظ آخر بحث
                 await AsyncStorage.setItem(LAST_QUERY_KEY, trimmed);
             } catch (err) {
                 console.error('[Search]', err);
@@ -363,7 +381,7 @@ export default function SearchScreen() {
             }
         }, 350);
         return () => clearTimeout(debounceRef.current);
-    }, [query, suraFilter, juzFilter]);
+    }, [query, suraFilter, juzFilter, searchMode]);
 
     // ── إجراءات ──────────────────────────────────────────────────────────────
 

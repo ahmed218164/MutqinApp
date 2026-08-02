@@ -7,6 +7,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "verify": "node verify-production-readiness.js",
+    "test": "npm run typecheck && npm run verify",
     "postinstall": "patch-package"
   },
   "dependencies": {

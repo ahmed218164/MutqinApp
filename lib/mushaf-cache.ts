@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const MUSHAF_CDN_BASE = 'https://www.searchtruth.com/quran/images2/';
 const CACHE_DIR = `${(FileSystem as any).documentDirectory || ''}mushaf_cache/`;

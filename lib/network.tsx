@@ -5,7 +5,6 @@
 
 import * as React from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface NetworkContextType {
   isOnline: boolean;
@@ -35,7 +34,6 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       if (!online) {
         setShowOfflineBanner(true);
       } else {
-        // Auto-dismiss when connectivity is restored
         setShowOfflineBanner(false);
       }
     });
@@ -47,18 +45,18 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     setShowOfflineBanner(false);
   };
 
-  return (
-    <NetworkContext.Provider
-      value={{
+  return React.createElement(
+    NetworkContext.Provider,
+    {
+      value: {
         isOnline,
         isConnected,
         connectionType,
         showOfflineBanner,
         dismissOfflineBanner,
-      }}
-    >
-      {children}
-    </NetworkContext.Provider>
+      },
+    },
+    children
   );
 }
 
@@ -70,7 +68,6 @@ export function useNetwork() {
   return context;
 }
 
-// Standalone function for checking connectivity
 export async function checkConnectivity(): Promise<boolean> {
   try {
     const state = await NetInfo.fetch();

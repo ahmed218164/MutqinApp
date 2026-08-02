@@ -150,6 +150,20 @@ function ReciteScreenInner() {
     const [feedbackLocalSaved, setFeedbackLocalSaved] = React.useState(false);
     const sheikhClipUrlRef = React.useRef<string | null>(null);
 
+    // Recording timer & audio cleanup on unmount
+    const recordingTimerRef = React.useRef<any>(null);
+    const recordingRef = React.useRef<any>(null);
+    React.useEffect(() => {
+        return () => {
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+            }
+            if (recordingRef.current) {
+                recordingRef.current.stopAndUnloadAsync().catch(() => {});
+            }
+        };
+    }, []);
+
     // Reader Settings — SLICE 2: sheet refs replace modal state
     const optionsSheetRef = React.useRef<BottomSheetModal>(null);
     const scopeSheetRef = React.useRef<BottomSheetModal>(null);

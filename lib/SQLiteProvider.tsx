@@ -12,7 +12,7 @@
 import * as React from 'react';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface Props {
     children: React.ReactNode;

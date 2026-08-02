@@ -589,3 +589,40 @@ export async function updateChallengeProgress(
         console.error('Error updating challenge progress:', error);
     }
 }
+
+/**
+ * Award Mutashabihat Mastery Badge & XP for completing Mutashabihat Missing Words Challenge
+ */
+export async function awardMutashabihatBadge(userId: string, score: number) {
+    try {
+        const xpAmount = XP_REWARDS.PERFECT_RECITATION + (score >= 90 ? 30 : 15);
+        await awardXP(userId, xpAmount, 'اختبار المتشابهات الذكي', `cloze_${Date.now()}`);
+
+        const achievement = {
+            user_id: userId,
+            achievement_type: 'mutashabihat_mastery',
+            achievement_name: 'وسام إتقان المتشابهات 🏅',
+            achievement_description: `اجتزت اختبار المتشابهات بنسبة ${score}% بنجاح!`,
+            icon: '🏅',
+            earned_at: new Date().toISOString(),
+            xp_reward: xpAmount,
+        };
+
+        const { error } = await supabase
+            .from('achievements')
+            .upsert([achievement], { onConflict: 'user_id,achievement_type' });
+
+        if (error) console.warn('[awardMutashabihatBadge] Badge save warning:', error.message);
+
+        await sendAchievementNotification(
+            'وسام إتقان المتشابهات! 🏅',
+            `حصلت على وسام إتقان المتشابهات و +${xpAmount} XP 🎉`,
+            0
+        );
+
+        return { xpAwarded: xpAmount, badgeName: achievement.achievement_name };
+    } catch (err) {
+        console.error('[awardMutashabihatBadge] Error:', err);
+        return null;
+    }
+}

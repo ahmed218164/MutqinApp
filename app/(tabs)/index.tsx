@@ -15,7 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { TrendingUp, BookOpen, Clock, AlertCircle, Zap, Search } from 'lucide-react-native';
+import { TrendingUp, BookOpen, Clock, AlertCircle, Zap, Search, Sparkles } from 'lucide-react-native';
+import MissingWordsModal from '../../components/challenges/MissingWordsModal';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -254,6 +255,7 @@ export default function Dashboard() {
     const [currentSurah, setCurrentSurah] = React.useState(null as { name: string; number: number } | null);
     const [activeNarration, setActiveNarration] = React.useState('Hafs');
     const [dailyWard, setDailyWard] = React.useState<DailyWard | null>(null);
+    const [showClozeModal, setShowClozeModal] = React.useState(false);
     // Track whether we already triggered the auto-advance for this session to prevent double-firing
     const autoAdvancedRef = React.useRef(false);
     const autoRoutedRef = React.useRef(false);
@@ -295,6 +297,7 @@ export default function Dashboard() {
                 reviews,
                 settings,
                 ward
+            // ✅ Parallel fetching
             ] = await Promise.all([
                 supabase
                     .from('profiles')
@@ -529,6 +532,32 @@ export default function Dashboard() {
                                 />
                             </StaggerIn>
 
+                            {/* Missing Words Recitation Challenge Action Card */}
+                            <StaggerIn delay={StaggerDelay * 4.5}>
+                                <TouchableOpacity
+                                    style={styles.clozeChallengeCard}
+                                    onPress={() => setShowClozeModal(true)}
+                                    activeOpacity={0.88}
+                                >
+                                    <LinearGradient
+                                        colors={['#022c22', '#064e3b', '#047857']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.clozeGradient}
+                                    >
+                                        <View style={styles.clozeContent}>
+                                            <View style={styles.clozeIconBadge}>
+                                                <Sparkles color={Colors.emerald[300]} size={22} />
+                                            </View>
+                                            <View style={styles.clozeTextBlock}>
+                                                <Text style={styles.clozeTitle}>اختبار الكلمات المفقودة 🧩</Text>
+                                                <Text style={styles.clozeSubtitle}>اختبر حفظك التفاعلي باكتشاف ونطق الكلمات المخفية</Text>
+                                            </View>
+                                        </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </StaggerIn>
+
                             {/* Due Reviews */}
                             {dueReviews.length > 0 && (
                                 <StaggerIn delay={StaggerDelay * 5}>
@@ -614,6 +643,12 @@ export default function Dashboard() {
                     )}
                     <View style={styles.bottomSpacer} />
                 </ScrollView>
+
+                {/* Smart Missing Words Recitation Challenge Modal */}
+                <MissingWordsModal
+                    visible={showClozeModal}
+                    onClose={() => setShowClozeModal(false)}
+                />
             </SafeAreaView>
         </View>
     );
@@ -835,5 +870,46 @@ const styles = StyleSheet.create({
         color: Colors.gold[300],
         fontSize: Typography.fontSize.sm,
         textAlign: 'right',
+    },
+    // Cloze Challenge Card Styles
+    clozeChallengeCard: {
+        marginTop: Spacing.md,
+        borderRadius: BorderRadius.xl,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(52, 211, 153, 0.3)',
+    },
+    clozeGradient: {
+        padding: Spacing.lg,
+    },
+    clozeContent: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    clozeIconBadge: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: Colors.emerald[400],
+    },
+    clozeTextBlock: {
+        flex: 1,
+    },
+    clozeTitle: {
+        fontSize: Typography.fontSize.base,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        textAlign: 'right',
+    },
+    clozeSubtitle: {
+        fontSize: Typography.fontSize.xs,
+        color: Colors.emerald[200],
+        textAlign: 'right',
+        marginTop: 2,
     },
 });

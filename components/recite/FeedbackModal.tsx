@@ -27,7 +27,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving, loca
     function getModelDisplayName(modelId?: string): string {
         switch (modelId) {
             case 'muaalem-api': return 'Muaalem Tajweed AI';
-            case 'gemini-flash-latest': return 'Gemini 3 Flash';
+            case 'gemini-3.5-flash': return 'Gemini 3.5 Flash';
             case 'gemini-2.5-flash': return 'Gemini 2.5 Flash';
             case 'gemini-2.5-flash-lite': return 'Gemini 2.5 Flash Lite';
             default: return modelId || 'AI';
@@ -36,7 +36,7 @@ export default function FeedbackModal({ visible, onClose, feedback, saving, loca
 
     function getSeverityColor(severity?: string) {
         switch (severity) {
-            case 'critical': return '#7f1d1d'; // deep red
+            case 'critical': return Colors.error;
             case 'major': return Colors.error;
             case 'moderate': return Colors.warning;
             case 'minor': return Colors.gold[600];

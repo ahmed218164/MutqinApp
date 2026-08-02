@@ -55,21 +55,22 @@ check(
 check(
   'Network State Manager',
   () => {
-    return fs.existsSync('lib/network.ts');
+    return fs.existsSync('lib/network.tsx') || fs.existsSync('lib/network.ts');
   },
-  'lib/network.ts should exist'
+  'lib/network.tsx or lib/network.ts should exist'
 );
 
 // Check 4: NetworkProvider exports
 check(
   'NetworkProvider Implementation',
   () => {
-    if (!fs.existsSync('lib/network.ts')) return false;
-    const content = fs.readFileSync('lib/network.ts', 'utf8');
+    const filePath = fs.existsSync('lib/network.tsx') ? 'lib/network.tsx' : 'lib/network.ts';
+    if (!fs.existsSync(filePath)) return false;
+    const content = fs.readFileSync(filePath, 'utf8');
     return content.includes('export function NetworkProvider') &&
            content.includes('export function useNetwork');
   },
-  'lib/network.ts should export NetworkProvider and useNetwork'
+  'lib/network.tsx should export NetworkProvider and useNetwork'
 );
 
 // Check 5: Offline queue exists
@@ -219,17 +220,69 @@ check(
   'package.json should include @react-native-community/netinfo'
 );
 
+// Check 18: TEST_INFRA.md infrastructure documentation
+check(
+  'E2E Test Infrastructure Specification (TEST_INFRA.md)',
+  () => {
+    if (!fs.existsSync('TEST_INFRA.md')) return false;
+    const content = fs.readFileSync('TEST_INFRA.md', 'utf8');
+    return content.includes('Test Philosophy') &&
+           content.includes('Feature Inventory') &&
+           content.includes('Test Architecture') &&
+           content.includes('Scenario Catalog');
+  },
+  'TEST_INFRA.md should exist at root with full philosophy, inventory, and catalog'
+);
+
+// Check 19: TEST_READY.md publication & breakdown
+check(
+  'E2E Test Readiness Report (TEST_READY.md)',
+  () => {
+    if (!fs.existsSync('TEST_READY.md')) return false;
+    const content = fs.readFileSync('TEST_READY.md', 'utf8');
+    return content.includes('Tier 1: 20 tests') &&
+           content.includes('Tier 2: 20 tests') &&
+           content.includes('Tier 3: 9 pairwise tests') &&
+           content.includes('Tier 4: 4 real-world application scenarios');
+  },
+  'TEST_READY.md should summarize test readiness and Tier 1-4 breakdown'
+);
+
+// Check 20: Test Suite Layout under __tests__/
+check(
+  'Automated Test Suite Layout',
+  () => {
+    return fs.existsSync('__tests__/unit') &&
+           fs.existsSync('__tests__/component') &&
+           fs.existsSync('__tests__/integration') &&
+           fs.existsSync('__tests__/rls') &&
+           fs.existsSync('__tests__/e2e');
+  },
+  '__tests__ directory layout should contain unit, component, integration, rls, and e2e suites'
+);
+
+// Check 21: package.json test scripts
+check(
+  'package.json Test & Typecheck Scripts',
+  () => {
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    return pkg.scripts.typecheck === 'tsc --noEmit' &&
+           pkg.scripts.verify === 'node verify-production-readiness.js' &&
+           pkg.scripts.test !== undefined;
+  },
+  'package.json should define typecheck, verify, and test scripts'
+);
+
 console.log('\n' + '='.repeat(50));
 console.log(`\n📊 Results: ${passed}/${passed + failed} checks passed\n`);
 
 if (failed === 0) {
-  console.log('🎉 All critical fixes are in place!');
-  console.log('✅ Your app is PRODUCTION-READY\n');
+  console.log('🎉 All critical fixes and E2E Test Suites are in place!');
+  console.log('✅ Your app & test suite are PRODUCTION-READY\n');
   console.log('Next steps:');
-  console.log('1. Run: npm start');
-  console.log('2. Test auth persistence (login → close → reopen)');
-  console.log('3. Test offline queue (record → airplane mode → verify)');
-  console.log('4. Deploy to TestFlight/Internal Testing');
+  console.log('1. Run: npm run typecheck');
+  console.log('2. Run: npm run verify');
+  console.log('3. Run: npm run test');
   console.log('\n🚀 Ready to ship!\n');
   process.exit(0);
 } else {

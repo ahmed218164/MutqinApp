@@ -66,17 +66,9 @@ export default function TabLayout() {
                         <Home color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={({ navigation }) => ({
-                    tabPress: (e) => {
-                        if (hasPlan === false) {
-                            (e as any).preventDefault();
-                            navigation.navigate('plan');
-                        }
-                    },
-                })}
             />
 
-            {/* ── خطتي (always accessible — this is where new users land) ── */}
+            {/* ── خطتي ────────────────────────────────────────────────── */}
             <Tabs.Screen
                 name="plan"
                 options={{
@@ -96,14 +88,6 @@ export default function TabLayout() {
                         <BookOpen color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={({ navigation }) => ({
-                    tabPress: (e) => {
-                        if (hasPlan === false) {
-                            (e as any).preventDefault();
-                            navigation.navigate('plan');
-                        }
-                    },
-                })}
             />
 
             {/* ── أخطائي ────────────────────────────────────────────────── */}
@@ -115,14 +99,6 @@ export default function TabLayout() {
                         <AlertCircle color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={({ navigation }) => ({
-                    tabPress: (e) => {
-                        if (hasPlan === false) {
-                            (e as any).preventDefault();
-                            navigation.navigate('plan');
-                        }
-                    },
-                })}
             />
 
             {/* ── ملفي ──────────────────────────────────────────────────── */}
@@ -134,14 +110,6 @@ export default function TabLayout() {
                         <User color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
                     ),
                 }}
-                listeners={({ navigation }) => ({
-                    tabPress: (e) => {
-                        if (hasPlan === false) {
-                            (e as any).preventDefault();
-                            navigation.navigate('plan');
-                        }
-                    },
-                })}
             />
 
             {/* Hidden screens (not shown in tab bar) */}

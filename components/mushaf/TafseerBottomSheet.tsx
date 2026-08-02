@@ -45,6 +45,7 @@ import {
     setActiveTafsirSourceId,
 } from '../../lib/tafsir-engine';
 import { SURAHS } from '../../constants/surahs';
+import { explainAsbabAlNuzulGrounded, GroundedTafseerResponse } from '../../lib/ai-features-suite';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,9 +117,25 @@ export default function TafseerBottomSheet({
         loadStatus();
     }, [visible]);
 
+    const [groundedData, setGroundedData] = React.useState<GroundedTafseerResponse | null>(null);
+    const [loadingGrounded, setLoadingGrounded] = React.useState(false);
+
+    async function fetchGroundedAsbabNuzul() {
+        if (!targetAyah) return;
+        setLoadingGrounded(true);
+        const data = await explainAsbabAlNuzulGrounded(
+            targetAyah.surah,
+            targetAyah.ayah,
+            entries[0]?.text || ''
+        );
+        setGroundedData(data);
+        setLoadingGrounded(false);
+    }
+
     // ── Load tafsir when source or ayah changes ───────────────────────────────
     React.useEffect(() => {
         if (!visible) return;
+        setGroundedData(null);
         if (!sourceStatus[activeSourceId]) { setEntries([]); return; }
 
         setIsLoading(true);
@@ -284,6 +301,31 @@ export default function TafseerBottomSheet({
                                     </View>
                                     {/* Tafsir text */}
                                     <Text style={styles.tafsirText}>{entry.text}</Text>
+
+                                    {/* Grounded Asbab Al-Nuzul Action Button & Card */}
+                                    {targetAyah && (
+                                        <View style={{ marginTop: 16 }}>
+                                            {loadingGrounded ? (
+                                                <View style={styles.groundedLoading}>
+                                                    <ActivityIndicator color={Colors.emerald[400]} size="small" />
+                                                    <Text style={styles.groundedLoadingText}>جاري البحث والتحقق من أسباب النزول الموثوقة بالذكاء الاصطناعي...</Text>
+                                                </View>
+                                            ) : groundedData ? (
+                                                <View style={styles.groundedCard}>
+                                                    <Text style={styles.groundedHeader}>📜 أسباب النزول الموثوقة (Search Grounding)</Text>
+                                                    <Text style={styles.groundedBody}>{groundedData.asbabNuzul}</Text>
+                                                    {groundedData.scholarlySources?.length > 0 && (
+                                                        <Text style={styles.groundedSources}>المصادر المعتمدة: {groundedData.scholarlySources.join(' • ')}</Text>
+                                                    )}
+                                                </View>
+                                            ) : (
+                                                <TouchableOpacity style={styles.groundedBtn} onPress={fetchGroundedAsbabNuzul}>
+                                                    <Text style={styles.groundedBtnText}>🔍 البحث في أسباب النزول الموثوقة بالذكاء الاصطناعي</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    )}
+
                                     {idx < entries.length - 1 && <View style={styles.divider} />}
                                 </View>
                             );
@@ -469,5 +511,56 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 40,
         lineHeight: 26,
+    },
+    // Grounded Asbab Al-Nuzul Styles
+    groundedBtn: {
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        borderWidth: 1,
+        borderColor: Colors.emerald[500],
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        alignItems: 'center',
+    },
+    groundedBtnText: {
+        color: Colors.emerald[300],
+        fontSize: Typography.fontSize.sm,
+        fontWeight: '700',
+    },
+    groundedLoading: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        justifyContent: 'center',
+        padding: Spacing.md,
+    },
+    groundedLoadingText: {
+        color: Colors.emerald[300],
+        fontSize: Typography.fontSize.xs,
+    },
+    groundedCard: {
+        backgroundColor: 'rgba(2, 44, 34, 0.8)',
+        borderWidth: 1,
+        borderColor: Colors.emerald[500],
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.md,
+    },
+    groundedHeader: {
+        color: Colors.emerald[400],
+        fontSize: Typography.fontSize.sm,
+        fontWeight: 'bold',
+        textAlign: 'right',
+        marginBottom: Spacing.xs,
+    },
+    groundedBody: {
+        color: Colors.text.inverse,
+        fontSize: Typography.fontSize.sm,
+        lineHeight: 24,
+        textAlign: 'right',
+    },
+    groundedSources: {
+        color: Colors.gold[400],
+        fontSize: Typography.fontSize.xs,
+        marginTop: Spacing.sm,
+        textAlign: 'right',
     },
 });

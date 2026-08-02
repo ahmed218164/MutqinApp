@@ -1,6 +1,40 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AI_MODELS } from './ai-models';
 
-const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY!);
+/**
+ * Lazy getter for GoogleGenerativeAI client instance
+ */
+export function getGeminiClient(): GoogleGenerativeAI {
+    const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error('EXPO_PUBLIC_GEMINI_API_KEY environment variable is not defined.');
+    }
+    return new GoogleGenerativeAI(apiKey);
+}
+
+/**
+ * Resolves the MIME type for audio input, handling full MIME types, file URIs/paths, or extensions.
+ * Defaults to audio/m4a.
+ */
+export function getAudioMimeType(input?: string): string {
+    if (!input) return 'audio/m4a';
+    if (input.startsWith('audio/')) return input;
+    if (input.includes('/')) {
+        const filename = input.split('/').pop() || '';
+        return getAudioMimeType(filename);
+    }
+    const lower = input.toLowerCase().trim();
+    if (lower.endsWith('.wav') || lower === 'wav') return 'audio/wav';
+    if (lower.endsWith('.mp3') || lower === 'mp3') return 'audio/mp3';
+    if (lower.endsWith('.ogg') || lower === 'ogg') return 'audio/ogg';
+    if (lower.endsWith('.webm') || lower === 'webm') return 'audio/webm';
+    if (lower.endsWith('.aac') || lower === 'aac') return 'audio/aac';
+    if (lower.endsWith('.flac') || lower === 'flac') return 'audio/flac';
+    if (lower.endsWith('.3gp') || lower === '3gp') return 'audio/3gpp';
+    if (lower.endsWith('.caf') || lower === 'caf') return 'audio/x-caf';
+    if (lower.endsWith('.m4a') || lower === 'm4a' || lower.endsWith('.mp4') || lower === 'mp4') return 'audio/m4a';
+    return 'audio/m4a';
+}
 
 export interface RecitationAssessment {
     mistakes: Array<{
@@ -24,6 +58,7 @@ export interface RecitationAssessment {
  * @param sheikhAudioBase64 - (Optional) Base64 encoded sheikh reference audio
  * @param sheikhMimeType - (Optional) MIME type of sheikh audio
  * @param phoneticRef - (Optional) Phonetic ground-truth for Madd/Ghunnah
+ * @param userAudioMimeType - (Optional) Dynamic MIME type or URI for user audio
  * @returns Assessment with mistakes and score
  */
 export async function checkRecitation(
@@ -32,12 +67,14 @@ export async function checkRecitation(
     sheikhAudioBase64?: string,
     sheikhMimeType?: string,
     phoneticRef?: string,
+    userAudioMimeType?: string,
 ): Promise<RecitationAssessment> {
     try {
+        const genAI = getGeminiClient();
         const modelNames = [
-            'gemini-3-flash-preview',
-            'gemini-2.5-flash',
-            'gemini-3.1-flash-lite-preview',
+            AI_MODELS.PRIMARY_AUDITOR,   // 'gemini-2.5-flash'
+            AI_MODELS.SECONDARY_AUDITOR, // 'gemini-1.5-flash'
+            AI_MODELS.PLAN_ARCHITECT,    // 'gemini-2.5-flash-lite'
         ];
         
         const HYBRID_SYSTEM_PROMPT = `You are an expert Quran Tajweed examiner with deep knowledge of Hafs recitation (حفص عن عاصم).
@@ -125,10 +162,12 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
 
         const promptText = `${HYBRID_SYSTEM_PROMPT}\n\n═══ INPUT DATA ═══\n\n${sheikhNote}UTHMANI_TEXT (${ayahCount} Ayah${ayahCount > 1 ? 's' : ''} — student must recite ALL of this):\n${referenceText}${phoneticSection}`;
 
+        const userMime = getAudioMimeType(userAudioMimeType);
+
         const parts: any[] = [
             {
                 inlineData: {
-                    mimeType: 'audio/m4a',
+                    mimeType: userMime,
                     data: userAudioBase64,
                 },
             },
