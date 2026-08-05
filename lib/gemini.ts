@@ -72,9 +72,11 @@ export async function checkRecitation(
     try {
         const genAI = getGeminiClient();
         const modelNames = [
-            AI_MODELS.PRIMARY_AUDITOR,   // 'gemini-2.5-flash'
-            AI_MODELS.SECONDARY_AUDITOR, // 'gemini-1.5-flash'
-            AI_MODELS.PLAN_ARCHITECT,    // 'gemini-2.5-flash-lite'
+            AI_MODELS.PRIMARY_AUDITOR,   // 'gemini-3.5-flash'
+            AI_MODELS.PLAN_ARCHITECT,    // 'gemini-3.5-flash-lite'
+            AI_MODELS.SECONDARY_AUDITOR, // 'gemini-3-flash'
+            AI_MODELS.RANDOM_TESTER,     // 'gemini-3.1-flash-lite'
+            'gemini-3.6-flash',
         ];
         
         const HYBRID_SYSTEM_PROMPT = `You are an expert Quran Tajweed examiner with deep knowledge of Hafs recitation (حفص عن عاصم).

@@ -15,8 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { TrendingUp, BookOpen, Clock, AlertCircle, Zap, Search, Sparkles } from 'lucide-react-native';
+import { TrendingUp, BookOpen, Clock, AlertCircle, Zap, Search, Sparkles, Radio } from 'lucide-react-native';
 import MissingWordsModal from '../../components/challenges/MissingWordsModal';
+import LiveMuaalemModal from '../../components/recite/LiveMuaalemModal';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -256,6 +257,7 @@ export default function Dashboard() {
     const [activeNarration, setActiveNarration] = React.useState('Hafs');
     const [dailyWard, setDailyWard] = React.useState<DailyWard | null>(null);
     const [showClozeModal, setShowClozeModal] = React.useState(false);
+    const [showLiveModal, setShowLiveModal] = React.useState(false);
     // Track whether we already triggered the auto-advance for this session to prevent double-firing
     const autoAdvancedRef = React.useRef(false);
     const autoRoutedRef = React.useRef(false);
@@ -558,6 +560,33 @@ export default function Dashboard() {
                                 </TouchableOpacity>
                             </StaggerIn>
 
+                            {/* Live Audio Muaalem Interactive Card */}
+                            <StaggerIn delay={StaggerDelay * 4.8}>
+                                <TouchableOpacity
+                                    style={styles.clozeChallengeCard}
+                                    onPress={() => setShowLiveModal(true)}
+                                    activeOpacity={0.88}
+                                >
+                                    <LinearGradient
+                                        colors={['#064e3b', '#047857', '#059669']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.clozeGradient}
+                                    >
+                                        <View style={styles.clozeContent}>
+                                            <View style={styles.clozeBadge}>
+                                                <Radio size={16} color="#10b981" />
+                                                <Text style={styles.clozeBadgeText}>جلسة حية مباشرة (Live API)</Text>
+                                            </View>
+                                            <View style={{ gap: 4 }}>
+                                                <Text style={styles.clozeTitle}>المعلم الصوتي المباشر</Text>
+                                                <Text style={styles.clozeSubtitle}>تسميع حي ومباشر مع المعلم الآلي بدون أي حدود استخدام</Text>
+                                            </View>
+                                        </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </StaggerIn>
+
                             {/* Due Reviews */}
                             {dueReviews.length > 0 && (
                                 <StaggerIn delay={StaggerDelay * 5}>
@@ -649,6 +678,12 @@ export default function Dashboard() {
                     visible={showClozeModal}
                     onClose={() => setShowClozeModal(false)}
                 />
+
+                {/* Live Interactive Voice Muaalem Modal */}
+                <LiveMuaalemModal
+                    visible={showLiveModal}
+                    onClose={() => setShowLiveModal(false)}
+                />
             </SafeAreaView>
         </View>
     );
@@ -661,12 +696,14 @@ const styles = StyleSheet.create({
     },
     safeArea: {
         flex: 1,
+        paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 12) : 0,
     },
     content: {
         flex: 1,
     },
     scrollContent: {
         padding: Spacing.lg,
+        paddingBottom: Spacing.xl,
     },
     section: {
         marginTop: Spacing.xl,
@@ -843,7 +880,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     bottomSpacer: {
-        height: 100,
+        height: 140,
     },
     // Ward card additions
     completedBadge: {
@@ -911,5 +948,16 @@ const styles = StyleSheet.create({
         color: Colors.emerald[200],
         textAlign: 'right',
         marginTop: 2,
+    },
+    clozeBadge: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 4,
+    },
+    clozeBadgeText: {
+        fontSize: Typography.fontSize.xs,
+        color: Colors.emerald[300],
+        fontWeight: '600',
     },
 });

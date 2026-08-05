@@ -19,7 +19,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import {
     User, Sun, Moon, Type, Plus, Minus,
-    BarChart3, Eye, ChevronRight,
+    BarChart3, Eye, ChevronRight, Radio,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/theme';
 
@@ -57,6 +57,7 @@ interface UnifiedOptionsSheetProps {
     onFontSizeChange: (size: number) => void;
     onHeatmapToggle: () => void;
     onHifzToggle: () => void;
+    onLiveMuaalemPress?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -74,8 +75,9 @@ export default function UnifiedOptionsSheet({
     onFontSizeChange,
     onHeatmapToggle,
     onHifzToggle,
+    onLiveMuaalemPress,
 }: UnifiedOptionsSheetProps) {
-    const snapPoints = React.useMemo(() => ['52%'], []);
+    const snapPoints = React.useMemo(() => ['58%'], []);
 
     const bg = nightMode ? SANCTUARY.bg : SANCTUARY.bgLight;
     const textPrimary = nightMode ? SANCTUARY.text.primary : SANCTUARY.text.primaryLight;

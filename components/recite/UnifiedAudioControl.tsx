@@ -355,7 +355,7 @@ function UnifiedAudioControlInner({
                 pointerEvents="box-none"
                 style={[
                     styles.dockOuter,
-                    { marginBottom: Math.max(bottomInset, SANCTUARY.pill.marginBottom) },
+                    { marginBottom: Math.max(bottomInset + (Platform.OS === 'android' ? 16 : 8), 24) },
                 ]}
             >
                 <View style={styles.dockPill}>

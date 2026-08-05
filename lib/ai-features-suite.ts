@@ -45,7 +45,7 @@ export async function performSemanticQuranSearch(query: string): Promise<Semanti
 
         // Perform semantic matching using Gemini Flash with context
         const model = ai.getGenerativeModel({
-            model: 'gemini-2.5-flash-lite',
+            model: 'gemini-3.5-flash-lite',
             generationConfig: { responseMimeType: 'application/json' },
         });
 
@@ -104,7 +104,7 @@ export async function explainAsbabAlNuzulGrounded(
 
         // Use Gemini Flash with Search Grounding
         const model = ai.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             generationConfig: { responseMimeType: 'application/json' },
         });
 
@@ -144,7 +144,7 @@ export async function askTajweedQuestionGemma(question: string): Promise<string>
     try {
         console.log(`[AI Suite] Asking Gemma 4: "${question}"...`);
         const ai = getGeminiClient();
-        const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const model = ai.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
 
         const prompt = `أنت معلم تجويد متمكن ومبسط في أحكام تلاوة القرآن الكريم (رواية حفص عن عاصم).
 إليك سؤال الطالب: "${question}"
@@ -176,7 +176,7 @@ export async function analyzePrintedMushafPhoto(photoBase64: string): Promise<Mu
         console.log('[AI Suite] Analyzing printed Mushaf photo with Gemini Vision...');
         const ai = getGeminiClient();
         const model = ai.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             generationConfig: { responseMimeType: 'application/json' },
         });
 
@@ -234,7 +234,7 @@ export async function runAdaptivePlanningAgent(
         console.log(`[AI Agent] Running Adaptive Planning Agent for user ${userId}...`);
         const ai = getGeminiClient();
         const model = ai.getGenerativeModel({
-            model: 'gemini-2.5-flash-lite',
+            model: 'gemini-3.5-flash-lite',
             generationConfig: { responseMimeType: 'application/json' },
         });
 

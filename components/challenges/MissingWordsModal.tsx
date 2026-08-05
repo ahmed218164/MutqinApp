@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     wordsRow: {
-        flexDirection: 'row-reverse',
+        flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
         gap: 10,

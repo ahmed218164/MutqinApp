@@ -12,7 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { audioEngine, configureAudioSession } from '../lib/audio-engine';
-import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark } from 'lucide-react-native';
+import { ArrowLeft, Mic, Play, AlertCircle, Settings as SettingsIcon, Bookmark, Radio } from 'lucide-react-native';
 import { Colors as StaticColors, Typography, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
@@ -37,6 +37,7 @@ import TafseerBottomSheet from '../components/mushaf/TafseerBottomSheet';
 import ReciterBottomSheet from '../components/recite/ReciterBottomSheet';
 import PlaybackScopeSheet, { PlaybackScope } from '../components/recite/PlaybackScopeSheet';
 import UnifiedOptionsSheet from '../components/recite/UnifiedOptionsSheet';
+import LiveMuaalemModal from '../components/recite/LiveMuaalemModal';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { Reciter, getDefaultReciter } from '../lib/audio-reciters';
 import { fetchSurahHeatmap, HeatmapData } from '../lib/heatmap-data';
@@ -120,6 +121,7 @@ function ReciteScreenInner() {
     const [selectedRange, setSelectedRange] = React.useState({ from: 1, to: 1 });
     const [learningMode, setLearningMode] = React.useState(false);
     const [showRangeSelector, setShowRangeSelector] = React.useState(false);
+    const [showLiveModal, setShowLiveModal] = React.useState(false);
 
     // Pager State
     const [activePage, setActivePage] = React.useState<number>(1);
@@ -758,28 +760,40 @@ function ReciteScreenInner() {
                         <View style={[
                             styles.actionBar,
                             {
-                                bottom: Math.max(insets.bottom, 8) + 8,
-                                backgroundColor: nightMode ? SANCTUARY.surface.elevated : SANCTUARY.surface.elevatedLight,
+                                bottom: Math.max(insets.bottom + (Platform.OS === 'android' ? 16 : 8), 24),
+                                backgroundColor: nightMode ? '#022c22' : '#ffffff',
+                                borderColor: 'rgba(52, 211, 153, 0.3)',
+                                borderWidth: 1,
                             },
                         ]}>
                             <TouchableOpacity
-                                style={[styles.actionBarButton, { backgroundColor: StaticColors.emerald[500] + '1A' }]}
+                                style={[styles.actionBarButton, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}
                                 onPress={() => scopeSheetRef.current?.present()}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open listen mode"
                             >
-                                <Play color={StaticColors.emerald[400]} size={22} fill={StaticColors.emerald[400]} />
+                                <Play color={StaticColors.emerald[400]} size={18} fill={StaticColors.emerald[400]} />
                                 <Text style={[styles.actionBarButtonText, { color: StaticColors.emerald[300] }]}>استماع</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                                style={[styles.actionBarButton, { backgroundColor: accentColor + '1A' }]}
+                                style={[styles.actionBarButton, { backgroundColor: accentColor + '20' }]}
                                 onPress={() => setAudioMode('record')}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open record mode"
                             >
-                                <Mic color={accentColor} size={22} />
-                                <Text style={[styles.actionBarButtonText, { color: isHafs ? StaticColors.emerald[300] : StaticColors.gold[300] }]}>تسميع</Text>
+                                <Mic color={accentColor} size={18} />
+                                <Text style={[styles.actionBarButtonText, { color: accentColor }]}>تسميع</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.actionBarButton, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}
+                                onPress={() => setShowLiveModal(true)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Open live muaalem mode"
+                            >
+                                <Radio color={StaticColors.gold[400]} size={18} />
+                                <Text style={[styles.actionBarButtonText, { color: StaticColors.gold[300] }]}>معلم مباشر</Text>
                             </TouchableOpacity>
                         </View>
                     )}
@@ -843,6 +857,13 @@ function ReciteScreenInner() {
                     onClose={() => setTafseerVisible(false)}
                     targetAyah={tafseerTarget}
                 />
+
+                {/* Live Interactive Voice Muaalem Modal */}
+                <LiveMuaalemModal
+                    visible={showLiveModal}
+                    onClose={() => setShowLiveModal(false)}
+                    surahName={surah?.name || surahName}
+                />
             </View>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
@@ -880,6 +901,7 @@ function ReciteScreenInner() {
                 onFontSizeChange={setCurrentFontSize}
                 onHeatmapToggle={() => setHeatmapVisible(v => !v)}
                 onHifzToggle={() => setHifzCoverVisible(v => !v)}
+                onLiveMuaalemPress={() => setShowLiveModal(true)}
             />
         </KeyboardAvoidingView>
     );
@@ -1030,15 +1052,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 10,
-        paddingVertical: 16,
-        borderRadius: 22,
-        minHeight: 52,
+        gap: 6,
+        paddingVertical: 12,
+        borderRadius: 18,
+        minHeight: 46,
     },
     actionBarButtonText: {
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: '700',
-        letterSpacing: 0.3,
+        letterSpacing: 0.2,
     },
 
     // ── Loading & Error ──

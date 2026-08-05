@@ -9,19 +9,21 @@ import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 // Model IDs (CRITICAL - DO NOT CHANGE)
 // ============================================
 export const AI_MODELS = {
-    PLAN_ARCHITECT: 'gemini-2.5-flash-lite',      // One-time plan generation fallback
-    PRIMARY_AUDITOR: 'gemini-2.5-flash',           // Daily recitation checks (Gemini 2.5 Flash)
-    SECONDARY_AUDITOR: 'gemini-1.5-flash',         // Advanced recitation checks (Gemini 1.5 Flash)
-    RANDOM_TESTER: 'gemini-2.5-flash',             // Random tests + Fallback
+    PLAN_ARCHITECT: 'gemini-3.5-flash-lite',      // Plan generation & fast assistant
+    PRIMARY_AUDITOR: 'gemini-3.5-flash',           // Primary audio recitation auditing
+    SECONDARY_AUDITOR: 'gemini-3-flash',           // Secondary audio fallback
+    RANDOM_TESTER: 'gemini-3.1-flash-lite',        // Fast random tests & light fallback
 } as const;
 
 export type ModelType = typeof AI_MODELS[keyof typeof AI_MODELS];
 
 // Model display names for UI transparency
 export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-    'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
-    'gemini-2.5-flash': 'Gemini 2.5 Flash',
-    'gemini-1.5-flash': 'Gemini 1.5 Flash',
+    'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite',
+    'gemini-3.5-flash': 'Gemini 3.5 Flash',
+    'gemini-3-flash': 'Gemini 3 Flash',
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+    'gemini-3.6-flash': 'Gemini 3.6 Flash',
 };
 
 // ============================================

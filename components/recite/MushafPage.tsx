@@ -837,11 +837,8 @@ pageNumber,
     }));
 
     // ── Night mode tint ───────────────────────────────────────────────────────
-    // Adjusted for text readability: 55% opacity warm-dark overlay preserves
-    // contrast of Mushaf text while still being comfortable at night
-    const nightTint = nightMode
-        ? { backgroundColor: 'rgba(10,8,4,0.55)', ...StyleSheet.absoluteFillObject }
-        : null;
+    // Kept transparent so the Uthmani Mushaf page remains crisp, bright and authentic
+    const nightTint = null;
 
     // ── Highlights → delegated to MushafHighlights component ─────────────────
 
