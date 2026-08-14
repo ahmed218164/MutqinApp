@@ -1,17 +1,20 @@
 /**
  * lib/muaalem-api.ts
  * ──────────────────────────────────────────────────────────────────────────────
- * High-Speed Google AI Studio Recitation Assessment API
+ * High-Accuracy Comprehensive Quran Recitation & Tajweed Assessment Engine
  *
- * Replaces slow Hugging Face Space (dr364873-tajweed-base.hf.space) with
- * direct Google AI Studio Gemini API calls (@google/generative-ai).
- * 
- * Provides sub-second / 1-2 second evaluation with zero cold-start delay!
+ * Integrates:
+ * 1. Mathematical Ground-Truth Phonetizer (lib/quran-phonetizer.ts)
+ * 2. High-Speed Word Alignment (Groq Whisper-Large-v3-Turbo when configured)
+ * 3. Deep Multimodal Tajweed & Makharij Auditor (Gemini 2.5 Flash / Groq LLM)
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
 import { getInfoAsync, readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { checkRecitation, RecitationAssessment } from './gemini';
+import { phonetizeForQiraat } from './quran-phonetizer';
+import { getActiveGroqApiKey } from './groq-api-key';
+import { transcribeRecitationWithGroq } from './groq';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -40,38 +43,40 @@ export interface AyahRange {
 
 /**
  * No-op warm up helper for backwards compatibility.
- * Google AI Studio APIs require zero cold-start warming!
  */
 export function wakeUpMuaalemSpace(signal?: AbortSignal): void {
-    console.log('[Google AI Studio] Gemini Recitation Engine ready — no warm-up needed.');
+    console.log('[Muaalem Engine] Recitation Engine ready.');
 }
 
 /**
- * Perform AI Tajweed evaluation on recorded user audio against expected Uthmani text.
+ * Perform High-Accuracy Tajweed & Recitation evaluation on recorded user audio
+ * against expected Uthmani text.
  *
  * @param audioUri Local file URI of user recording (.m4a, .wav, .mp3)
- * @param uthmaniText Correct Uthmani reference text
+ * @param uthmaniText Correct Uthmani reference text with full tashkeel
  * @param ayahRange Surah + ayah range
+ * @param qiraat Recitation narration (default 'Hafs')
  * @returns MuaalemAssessment with score + detailed mistakes
  */
 export async function checkRecitationWithMuaalem(
     audioUri: string,
     uthmaniText: string,
     ayahRange?: AyahRange,
+    qiraat: string = 'Hafs'
 ): Promise<MuaalemAssessment> {
     try {
-        // Validate file exists before processing
+        // 1. Validate file exists
         const fileInfo = await getInfoAsync(audioUri);
         if (!fileInfo.exists) {
             return { score: 0, mistakes: [], error: 'ملف التسجيل غير موجود.' };
         }
 
-        // Guard against near-silent / empty recordings
+        // 2. Guard against near-silent / empty recordings
         const MIN_AUDIO_BYTES = 5_000; // 5 KB
         const fileSize = (fileInfo as any).size ?? 0;
         if (fileSize < MIN_AUDIO_BYTES) {
             console.warn(
-                `[Google AI Studio] Audio file too small (${fileSize} bytes < ${MIN_AUDIO_BYTES} bytes). Skipping.`
+                `[Muaalem Engine] Audio file too small (${fileSize} bytes < ${MIN_AUDIO_BYTES} bytes). Skipping.`
             );
             return {
                 score: 0,
@@ -80,34 +85,79 @@ export async function checkRecitationWithMuaalem(
             };
         }
 
-        console.log('[Google AI Studio] Converting audio to base64 for Gemini multimodal evaluation...');
-        
-        // Read local audio file as base64 string for Gemini API
+        // 3. Generate mathematical phonetic ground truth
+        const phoneticRef = phonetizeForQiraat(uthmaniText, qiraat);
+        console.log(`[Muaalem Engine] Generated Phonetic Ground-Truth (${qiraat}):`, phoneticRef);
+
+        // 4. Check if Groq Whisper is available for sub-second word-alignment assistance
+        const groqApiKey = getActiveGroqApiKey();
+        let groqTranscribedText = '';
+
+        if (groqApiKey) {
+            try {
+                console.log('[Muaalem Engine] Executing Groq Whisper-Large-v3-Turbo ASR pass...');
+                const groqResult = await transcribeRecitationWithGroq(audioUri, uthmaniText);
+                if (groqResult && !groqResult.error && groqResult.text) {
+                    groqTranscribedText = groqResult.text;
+                    console.log('[Muaalem Engine] Groq ASR Transcription:', groqTranscribedText);
+                }
+            } catch (groqErr) {
+                console.warn('[Muaalem Engine] Groq ASR pass skipped:', groqErr);
+            }
+        }
+
+        // 5. Read local audio file as base64 string for Multimodal Tajweed evaluation
+        console.log('[Muaalem Engine] Reading audio as Base64 for Deep Multimodal Tajweed Audit...');
         const base64Audio = await readAsStringAsync(audioUri, {
             encoding: EncodingType.Base64,
         });
 
-        console.log('[Google AI Studio] Invoking Gemini recitation assessment model...');
-        const geminiResult: RecitationAssessment = await checkRecitation(
+        // 6. Invoke Gemini Comprehensive Tajweed Auditor
+        console.log('[Muaalem Engine] Invoking Gemini Multimodal Tajweed Auditor with Phonetic Reference...');
+        const assessmentResult: RecitationAssessment = await checkRecitation(
             base64Audio,
             uthmaniText,
+            undefined, // sheikh clip
             undefined,
-            undefined,
-            undefined,
+            phoneticRef,
             audioUri
         );
 
-        if (geminiResult.error) {
+        if (assessmentResult.error) {
             return {
                 score: 0,
                 mistakes: [],
-                error: geminiResult.error,
+                error: assessmentResult.error,
             };
         }
 
-        return mapGeminiResponseToMuaalem(geminiResult);
+        // 7. Map response to standard Muaalem format
+        const mappedAssessment = mapGeminiResponseToMuaalem(assessmentResult);
+
+        // 8. Cross-verify with Groq word-alignment if omissions were detected
+        if (groqTranscribedText && uthmaniText) {
+            const cleanRefWords = uthmaniText.replace(/[\u064B-\u065F\u0670]/g, '').trim().split(/\s+/);
+            const cleanHeardWords = groqTranscribedText.replace(/[\u064B-\u065F\u0670]/g, '').trim().split(/\s+/);
+
+            // If user recited significantly fewer words than reference
+            if (cleanHeardWords.length < cleanRefWords.length * 0.6) {
+                const alreadyHasOmission = mappedAssessment.mistakes.some(m => m.category === 'حذف');
+                if (!alreadyHasOmission && cleanRefWords.length > 3) {
+                    mappedAssessment.mistakes.unshift({
+                        word: 'تلاوة غير مكتملة',
+                        expected: uthmaniText,
+                        description: `تمت تلاوة ${cleanHeardWords.length} كلمات فقط من أصل ${cleanRefWords.length} كلمة في الآية الكريمة.`,
+                        category: 'حذف',
+                        severity: 'critical',
+                    });
+                    mappedAssessment.score = Math.min(mappedAssessment.score, Math.round((cleanHeardWords.length / cleanRefWords.length) * 100));
+                }
+            }
+        }
+
+        return mappedAssessment;
     } catch (error: any) {
-        console.error('[Google AI Studio] Recitation assessment error:', error);
+        console.error('[Muaalem Engine] Recitation assessment error:', error);
 
         let errorMessage = 'حدث خطأ أثناء تحليل التلاوة بالذكاء الاصطناعي.';
         if (error.message?.includes('network') || error.message?.includes('Network')) {

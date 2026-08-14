@@ -20,6 +20,7 @@ import Card from '../components/ui/Card';
 import { useAuth } from '../lib/auth';
 import { useSettings } from '../lib/settings';
 import { getSavedGeminiApiKey, saveGeminiApiKey, testGeminiConnection } from '../lib/gemini-api-key';
+import { getSavedGroqApiKey, saveGroqApiKey, testGroqConnection } from '../lib/groq-api-key';
 import { MUTQIN_MODEL_ROUTES, MutqinModelTask } from '../lib/ai-models';
 
 const MODEL_ROUTE_LABELS: Record<MutqinModelTask, string> = {
@@ -42,10 +43,20 @@ export default function SettingsScreen() {
     const [geminiStatus, setGeminiStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
     const [availableCapabilities, setAvailableCapabilities] = React.useState<MutqinModelTask[]>([]);
 
+    const [groqKey, setGroqKey] = React.useState('');
+    const [hasSavedGroqKey, setHasSavedGroqKey] = React.useState(false);
+    const [testingGroq, setTestingGroq] = React.useState(false);
+    const [groqStatus, setGroqStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+    const [availableGroqModels, setAvailableGroqModels] = React.useState<string[]>([]);
+
     React.useEffect(() => {
         getSavedGeminiApiKey()
             .then(key => setHasSavedGeminiKey(Boolean(key)))
             .catch(() => setHasSavedGeminiKey(false));
+
+        getSavedGroqApiKey()
+            .then(key => setHasSavedGroqKey(Boolean(key)))
+            .catch(() => setHasSavedGroqKey(false));
     }, []);
 
     async function handleSaveGeminiKey() {
@@ -75,6 +86,34 @@ export default function SettingsScreen() {
                 setHasSavedGeminiKey(true);
             } catch {
                 // The connection already succeeded; keep the result visible.
+            }
+        }
+    }
+
+    async function handleSaveGroqKey() {
+        try {
+            await saveGroqApiKey(groqKey);
+            setGroqKey('');
+            setHasSavedGroqKey(true);
+            setGroqStatus({ ok: true, text: 'تم حفظ مفتاح Groq محلياً بنجاح.' });
+        } catch (error) {
+            setGroqStatus({ ok: false, text: error instanceof Error ? error.message : 'تعذّر حفظ مفتاح Groq.' });
+        }
+    }
+
+    async function handleTestGroqConnection() {
+        setTestingGroq(true);
+        const result = await testGroqConnection(groqKey);
+        setTestingGroq(false);
+        setGroqStatus({ ok: result.ok, text: result.message });
+        setAvailableGroqModels(result.ok ? result.availableModels : []);
+        if (result.ok && groqKey.trim()) {
+            try {
+                await saveGroqApiKey(groqKey);
+                setGroqKey('');
+                setHasSavedGroqKey(true);
+            } catch {
+                // Ignore save error on successful test
             }
         }
     }
@@ -155,6 +194,7 @@ export default function SettingsScreen() {
                 </Card>
 
                 <Text style={styles.sectionTitle}>الذكاء الاصطناعي</Text>
+                {/* Gemini AI Card */}
                 <Card style={styles.settingCard}>
                     <View style={styles.settingHeader}>
                         <View style={styles.settingIcon}>
@@ -213,6 +253,80 @@ export default function SettingsScreen() {
                                         <Text style={styles.capabilityText}>{MODEL_ROUTE_LABELS[task]}</Text>
                                         <Text style={[styles.capabilityState, { color: available ? Colors.success : Colors.neutral[500] }]}>
                                             {available ? 'متاح' : 'غير ظاهر في حسابك'}
+                                        </Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
+                </Card>
+
+                {/* Groq Cloud Fast Engine Card */}
+                <Card style={styles.settingCard}>
+                    <View style={styles.settingHeader}>
+                        <View style={styles.settingIcon}>
+                            <KeyRound color={Colors.gold[600]} size={24} />
+                        </View>
+                        <View style={styles.settingInfo}>
+                            <Text style={styles.settingTitle}>مفتاح Groq API (فائق السرعة)</Text>
+                            <Text style={styles.settingDescription}>
+                                {hasSavedGroqKey
+                                    ? 'تم تفعيل Whisper-Large-v3-Turbo و Llama-3.3'
+                                    : 'اختياري: لتسريع التفريغ والمطابقة الصوتية'}
+                            </Text>
+                        </View>
+                    </View>
+                    <TextInput
+                        style={styles.apiKeyInput}
+                        value={groqKey}
+                        onChangeText={text => {
+                            setGroqKey(text);
+                            setGroqStatus(null);
+                        }}
+                        placeholder={hasSavedGroqKey ? 'أدخل مفتاح Groq جديد للاستبدال (gsk_...)' : 'ألصق مفتاح Groq API هنا'}
+                        placeholderTextColor={Colors.neutral[400]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        secureTextEntry
+                        textContentType="password"
+                    />
+                    <View style={styles.apiKeyActions}>
+                        <TouchableOpacity
+                            style={[styles.apiKeyButton, styles.testButton]}
+                            onPress={handleTestGroqConnection}
+                            disabled={testingGroq}
+                        >
+                            {testingGroq ? <ActivityIndicator color={Colors.emerald[700]} /> : <Text style={styles.testButtonText}>اختبار الاتصال</Text>}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.apiKeyButton, styles.saveButton, !groqKey.trim() && styles.buttonDisabled]}
+                            onPress={handleSaveGroqKey}
+                            disabled={!groqKey.trim()}
+                        >
+                            <Text style={styles.saveButtonText}>حفظ المفتاح</Text>
+                        </TouchableOpacity>
+                    </View>
+                    {groqStatus && (
+                        <View style={[styles.apiStatus, groqStatus.ok ? styles.apiStatusSuccess : styles.apiStatusError]}>
+                            {groqStatus.ok ? <CheckCircle2 color={Colors.success} size={17} /> : <CircleAlert color={Colors.error} size={17} />}
+                            <Text style={[styles.apiStatusText, { color: groqStatus.ok ? Colors.emerald[800] : Colors.error }]}>{groqStatus.text}</Text>
+                        </View>
+                    )}
+                    {groqStatus?.ok && (
+                        <View style={styles.capabilityList}>
+                            <Text style={styles.capabilityTitle}>النماذج المتاحة في حساب Groq</Text>
+                            {[
+                                { name: 'تفريغ التلاوة فائق السرعة', model: 'whisper-large-v3-turbo' },
+                                { name: 'التدقيق التجويدي المعمق', model: 'llama-3.3-70b-versatile' },
+                                { name: 'الخطط والاختبارات الخاطفة', model: 'llama-3.1-8b-instant' },
+                                { name: 'النطق العربي الفصيح للمعلم', model: 'canopylabs/orpheus-arabic-saudi' },
+                            ].map(item => {
+                                const available = availableGroqModels.includes(item.model) || availableGroqModels.some(m => m.includes(item.model));
+                                return (
+                                    <View key={item.model} style={styles.capabilityRow}>
+                                        <Text style={styles.capabilityText}>{item.name}</Text>
+                                        <Text style={[styles.capabilityState, { color: available ? Colors.success : Colors.neutral[500] }]}>
+                                            {available ? 'متاح ✅' : 'جاهز'}
                                         </Text>
                                     </View>
                                 );
@@ -287,7 +401,6 @@ export default function SettingsScreen() {
                         <View style={styles.menuRow}>
                             <View style={styles.menuIcon}>
                                 <LogOut color={Colors.emerald[600]} size={24} />
-                                {/* Using LogOut icon temporarily as About icon, or Info if available */}
                             </View>
                             <Text style={styles.menuText}>حول مُتقِن</Text>
                             <ArrowLeft style={{ transform: [{ rotate: '180deg' }] }} color={Colors.neutral[400]} size={20} />
@@ -378,81 +491,79 @@ const styles = StyleSheet.create({
     apiKeyButton: {
         flex: 1,
         alignItems: 'center',
-        borderRadius: BorderRadius.md,
+        justifyContent: 'center',
         paddingVertical: Spacing.md,
-    },
-    testButton: {
-        borderWidth: 1,
-        borderColor: Colors.emerald[500],
-        backgroundColor: Colors.emerald[50],
-    },
-    testButtonText: {
-        color: Colors.emerald[700],
-        fontSize: Typography.fontSize.sm,
-        fontWeight: Typography.fontWeight.bold,
+        borderRadius: BorderRadius.md,
     },
     saveButton: {
-        backgroundColor: Colors.emerald[700],
+        backgroundColor: Colors.emerald[600],
     },
     saveButtonText: {
         color: Colors.text.inverse,
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.bold,
     },
+    testButton: {
+        backgroundColor: Colors.neutral[100],
+        borderWidth: 1,
+        borderColor: Colors.neutral[300],
+    },
+    testButtonText: {
+        color: Colors.emerald[800],
+        fontSize: Typography.fontSize.sm,
+        fontWeight: Typography.fontWeight.medium,
+    },
     buttonDisabled: {
-        opacity: 0.45,
+        opacity: 0.5,
     },
     apiStatus: {
-        flexDirection: 'row-reverse',
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: Spacing.xs,
+        gap: Spacing.sm,
+        padding: Spacing.md,
+        borderRadius: BorderRadius.md,
         marginTop: Spacing.md,
-        padding: Spacing.sm,
-        borderRadius: BorderRadius.base,
     },
     apiStatusSuccess: {
         backgroundColor: Colors.emerald[50],
+        borderColor: Colors.emerald[200],
+        borderWidth: 1,
     },
     apiStatusError: {
-        backgroundColor: '#fef2f2',
+        backgroundColor: '#FEF2F2',
+        borderColor: '#FCA5A5',
+        borderWidth: 1,
     },
     apiStatusText: {
         flex: 1,
-        fontSize: Typography.fontSize.xs,
-        textAlign: 'right',
-        writingDirection: 'rtl',
+        fontSize: Typography.fontSize.sm,
     },
     capabilityList: {
         marginTop: Spacing.md,
+        paddingTop: Spacing.md,
         borderTopWidth: 1,
         borderTopColor: Colors.neutral[200],
-        paddingTop: Spacing.sm,
+        gap: Spacing.xs,
     },
     capabilityTitle: {
-        color: Colors.text.secondary,
-        fontSize: Typography.fontSize.xs,
-        fontWeight: Typography.fontWeight.semibold,
-        textAlign: 'right',
-        writingDirection: 'rtl',
+        fontSize: Typography.fontSize.sm,
+        fontWeight: Typography.fontWeight.bold,
+        color: Colors.emerald[950],
         marginBottom: Spacing.xs,
     },
     capabilityRow: {
-        flexDirection: 'row-reverse',
+        flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 5,
+        paddingVertical: 2,
     },
     capabilityText: {
+        fontSize: Typography.fontSize.xs,
         color: Colors.text.primary,
-        fontSize: Typography.fontSize.sm,
-        textAlign: 'right',
-        writingDirection: 'rtl',
     },
     capabilityState: {
         fontSize: Typography.fontSize.xs,
-        fontWeight: Typography.fontWeight.semibold,
-        textAlign: 'left',
-        writingDirection: 'rtl',
+        fontWeight: Typography.fontWeight.medium,
     },
     fontSizeControls: {
         flexDirection: 'row',
@@ -461,60 +572,37 @@ const styles = StyleSheet.create({
         marginTop: Spacing.lg,
     },
     fontSizeButton: {
-        backgroundColor: Colors.emerald[950],
         width: 48,
         height: 48,
         borderRadius: BorderRadius.full,
+        backgroundColor: Colors.emerald[100],
         alignItems: 'center',
         justifyContent: 'center',
     },
     fontSizeButtonText: {
-        fontSize: Typography.fontSize['2xl'],
+        fontSize: Typography.fontSize.xl,
         fontWeight: Typography.fontWeight.bold,
-        color: Colors.text.inverse,
+        color: Colors.emerald[700],
     },
     fontSizePreview: {
         flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
         paddingHorizontal: Spacing.lg,
     },
     previewText: {
-        fontWeight: Typography.fontWeight.semibold,
         color: Colors.emerald[950],
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     sectionTitle: {
-        fontSize: Typography.fontSize.xl,
+        fontSize: Typography.fontSize.base,
         fontWeight: Typography.fontWeight.bold,
-        color: Colors.emerald[950],
-        marginTop: Spacing.lg,
-        marginBottom: Spacing.md,
-    },
-    signOutButton: {
-        backgroundColor: Colors.error,
-        borderRadius: BorderRadius.lg,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: Spacing.lg,
+        color: Colors.neutral[500],
         marginTop: Spacing.xl,
-    },
-    signOutText: {
-        fontSize: Typography.fontSize.lg,
-        fontWeight: Typography.fontWeight.bold,
-        color: Colors.text.inverse,
-        marginRight: Spacing.sm,  // RTL: was marginLeft
-    },
-    version: {
-        fontSize: Typography.fontSize.sm,
-        color: Colors.text.tertiary,
-        textAlign: 'center',
-        marginTop: Spacing['2xl'],
-        marginBottom: Spacing.xl,
+        marginBottom: Spacing.md,
+        marginHorizontal: Spacing.xs,
     },
     menuCard: {
-        marginBottom: Spacing.md,
-        padding: Spacing.lg,
+        marginBottom: Spacing.sm,
     },
     menuRow: {
         flexDirection: 'row',
@@ -525,8 +613,30 @@ const styles = StyleSheet.create({
     },
     menuText: {
         flex: 1,
-        fontSize: Typography.fontSize.lg,
-        fontWeight: Typography.fontWeight.semibold,
+        fontSize: Typography.fontSize.base,
+        fontWeight: Typography.fontWeight.medium,
         color: Colors.text.primary,
+    },
+    signOutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.error,
+        padding: Spacing.lg,
+        borderRadius: BorderRadius.lg,
+        marginTop: Spacing['2xl'],
+        marginBottom: Spacing.lg,
+    },
+    signOutText: {
+        color: Colors.text.inverse,
+        fontSize: Typography.fontSize.base,
+        fontWeight: Typography.fontWeight.bold,
+    },
+    version: {
+        textAlign: 'center',
+        fontSize: Typography.fontSize.xs,
+        color: Colors.neutral[400],
+        marginBottom: Spacing['3xl'],
     },
 });

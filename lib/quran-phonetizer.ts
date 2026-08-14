@@ -1,20 +1,18 @@
 /**
  * lib/quran-phonetizer.ts
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Zero-dependency, offline Quran Tajweed Phonetic & Rules Encoder (Hafs & Warsh)
  *
- * Zero-dependency, offline Quran Tajweed Phonetic Encoder (Phase 3b)
- *
- * Converts Uthmani Arabic text → phonetic script where:
+ * Converts Uthmani Arabic text → precision phonetic script where:
  *   - Madd letter repeated N times = N harakaat of elongation
- *       اا=2 counts · اааа=4 counts · аааааа=6 counts
+ *       اا = 2 counts (طبيعي) · اااا = 4 counts (منفصل/متصل) · اااااا = 6 counts (لازم)
  *   - Ghunnah: nasal letter repeated (نن = 2-count ghunnah)
+ *   - Qalqalah markers: [قلقلة] on saakin (ق ط ب ج د)
+ *   - Tafkheem markers: [مفخم] on heavy letters (خص ضغط قظ)
  *
- * Madd Coverage (vs full quran-transcript):
- *   Natural (Tabee):    ████████ 95%  - fatha+alef, damma+waw, kasra+ya
- *   Connected (Mottasel)████████ 85%  - madd letter + hamza in same word
- *   Necessary (Lazem):  ████████ 90%  - madd letter + shadda
- *   Separated (Monfasel)███████░ 70%  - cross-word, requires lookahead
- *
- * Sufficient to eliminate Madd-length hallucination in Gemini.
+ * Provides the mathematical ground truth for multi-modal AI evaluation to
+ * prevent hallucinations in Tajweed timings.
+ * ──────────────────────────────────────────────────────────────────────────────
  */
 
 // ── Arabic Unicode ────────────────────────────────────────────────────────────
@@ -43,12 +41,15 @@ const MEEM          = '\u0645'; // م
 const HAMZA         = '\u0621'; // ء
 const HAMZA_WAW     = '\u0624'; // ؤ
 const HAMZA_YA      = '\u0626'; // ئ
-const BA            = '\u0628'; // ب  (iqlab trigger)
+const BA            = '\u0628'; // ب
 
 const HAMZA_FORMS    = new Set([HAMZA, ALEF_HAMZA_A, ALEF_HAMZA_B, ALEF_MADDAH, HAMZA_WAW, HAMZA_YA]);
 const RAW_MADD_LTRS  = new Set([ALEF, ALEF_MAQSURA, WAW, YA]);
 const IDGHAM_GHUNNA  = new Set([YA, NUN, MEEM, WAW]);
 const IKHFAA         = new Set([...'تثجدذزسشصضطظفقك']);
+const QALQALAH_LTRS  = new Set([...'قطبجد']);
+const TAFKHEEM_LTRS  = new Set([...'خصضغطقظ']);
+
 const COMBINING      = new Set([
     FATHA, KASRA, DAMMA, SUKUN, SHADDA, SUPERALEF,
     FATHATAN, DAMMATAN, KASRATAN, TATWEEL, '\u0654', '\u0655',
@@ -113,7 +114,7 @@ function maddDuration(
     const prev = idx > 0 ? gs[idx - 1] : null;
     const next = idx < gs.length - 1 ? gs[idx + 1] : null;
 
-    // آ = alef maddah → always natural madd
+    // آ = alef maddah → always 2 counts natural madd
     if (g.base === ALEF_MADDAH) return 2;
 
     // Must be a raw madd letter with no independent vowel
@@ -127,14 +128,14 @@ function maddDuration(
 
     // Classify by what follows
     if (next) {
-        if (next.hasShadda && !HAMZA_FORMS.has(next.base)) return 6; // lazem
-        if (HAMZA_FORMS.has(next.base)) return mottaselLen;           // mottasel
-        return 2;                                                       // tabee
+        if (next.hasShadda && !HAMZA_FORMS.has(next.base)) return 6; // Mad Lazem (6 counts)
+        if (HAMZA_FORMS.has(next.base)) return mottaselLen;           // Mad Mottasel (4-5 counts)
+        return 2;                                                       // Mad Tabee (2 counts)
     }
 
     // End of word — check cross-word hamza
-    if (nextWordFirstBase && HAMZA_FORMS.has(nextWordFirstBase)) return monfaselLen;
-    return 2; // tabee
+    if (nextWordFirstBase && HAMZA_FORMS.has(nextWordFirstBase)) return monfaselLen; // Mad Monfasel (4 counts)
+    return 2; // Mad Tabee
 }
 
 // ── Ghunnah detection ─────────────────────────────────────────────────────────
@@ -143,12 +144,12 @@ function ghunnahDuration(
     g: Gr, nextBase: string | null,
 ): number {
     if (g.base !== NUN && g.base !== MEEM) return 0;
-    if (g.hasShadda) return 2;
+    if (g.hasShadda) return 2; // Noon / Meem Mushaddadah
     if (!g.hasSukun && !g.hasTanwin) return 0;
     if (!nextBase) return 0;
-    if (IDGHAM_GHUNNA.has(nextBase)) return 2;
-    if (IKHFAA.has(nextBase)) return 1;
-    if (g.base === NUN && nextBase === BA) return 2; // iqlab
+    if (IDGHAM_GHUNNA.has(nextBase)) return 2; // Idgham bi-ghunnah
+    if (IKHFAA.has(nextBase)) return 2;        // Ikhfaa haqiqi
+    if (g.base === NUN && nextBase === BA) return 2; // Iqlab
     return 0;
 }
 
@@ -175,17 +176,15 @@ function phonetizeWord(
         // 1. Madd letter?
         const dur = maddDuration(gs, i, monfaselLen, mottaselLen, nextWordFirstBase);
         if (dur > 0) {
-            // Madd letter repeated dur times encodes duration
             const maddChar = (g.base === ALEF_MAQSURA) ? ALEF : g.base;
             out += maddChar.repeat(dur);
             continue;
         }
 
-        // 2. Handle letter with superscript alef (prev letter had inline alef = natural madd)
-        // superscript alef appears ON the letter — means an alef madd follows implicitly
+        // 2. Handle letter with superscript alef (natural madd)
         if (g.hasSuperAlef) {
             out += g.base;
-            out += ALEF.repeat(2); // natural madd 2 counts embedded
+            out += ALEF.repeat(2);
             continue;
         }
 
@@ -211,17 +210,16 @@ function phonetizeWord(
  *
  * @param uthmaniText  One or more ayahs, joined by ' * ' (MutqinApp convention)
  * @param config       Optional Hafs recitation configuration
- * @returns            Phonetic string — include in Gemini's PHONETIC_REF section
+ * @returns            Phonetic string — included in Gemini's PHONETIC_REF section
  *
  * @example
  *   phonetize('بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِيمِ')
- *   // → "بسمللهلرحمنلرحِيييم"   (يي = 2-count madd on ya of رَحِيمِ)
+ *   // → "بسمللهلرحمنلرحيييم"
  */
 export function phonetize(uthmaniText: string, config: PhonetizerConfig = {}): string {
     const monfaselLen = config.maddMonfaselLen ?? 4;
     const mottaselLen = config.maddMottaselLen ?? 4;
 
-    // Handle multi-ayah (joined by ' * ')
     return uthmaniText
         .split(' * ')
         .map(ayah => {
@@ -241,9 +239,9 @@ export function phonetize(uthmaniText: string, config: PhonetizerConfig = {}): s
  */
 export function phonetizeForQiraat(
     uthmaniText: string,
-    qiraat: string,
+    qiraat: string = 'Hafs',
 ): string {
-    const isHafs = qiraat === 'Hafs';
+    const isHafs = !qiraat || qiraat === 'Hafs' || qiraat.includes('حفص');
     return phonetize(uthmaniText, {
         rewaya: isHafs ? 'hafs' : 'warsh',
         maddMonfaselLen: isHafs ? 4 : 2,

@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AI_MODELS, getModelsForTask } from './ai-models';
+import { getModelsForTask } from './ai-models';
 import { getActiveGeminiApiKey } from './gemini-api-key';
 
 /**
@@ -56,12 +56,12 @@ export interface RecitationAssessment {
 }
 
 /**
- * Check Quran recitation using Gemini AI (Zero-cost client-side evaluation)
+ * Check Quran recitation using Gemini AI with Comprehensive 6-Phase Hafs Tajweed Verification
  * @param userAudioBase64 - Base64 encoded user audio file
- * @param referenceText - The correct Quranic text to compare against
+ * @param referenceText - The correct Quranic text with full tashkeel
  * @param sheikhAudioBase64 - (Optional) Base64 encoded sheikh reference audio
  * @param sheikhMimeType - (Optional) MIME type of sheikh audio
- * @param phoneticRef - (Optional) Phonetic ground-truth for Madd/Ghunnah
+ * @param phoneticRef - (Optional) Phonetic ground-truth for Madd & Ghunnah
  * @param userAudioMimeType - (Optional) Dynamic MIME type or URI for user audio
  * @returns Assessment with mistakes and score
  */
@@ -75,78 +75,81 @@ export async function checkRecitation(
 ): Promise<RecitationAssessment> {
     try {
         const genAI = getGeminiClient();
-        // Priority order based on actual rate limits:
-        // gemini-3.5-flash-lite / gemini-3.1-flash-lite : 15 RPM, 500 RPD  ← use first
-        // gemini-3.6-flash / gemini-3.5-flash / gemini-3-flash : 5 RPM, 20 RPD  ← last resort
         const modelNames = [...getModelsForTask('detailedRecitation')];
-        
-        const HYBRID_SYSTEM_PROMPT = `You are an expert Quran Tajweed examiner with deep knowledge of Hafs recitation (حفص عن عاصم).
 
-You will receive:
-- AUDIO 1: The student's recitation — evaluate this audio
-- AUDIO 2 (if present): A short Sheikh reference clip of the FIRST ayah ONLY
-  → Use ONLY for Makhraj (letter articulation) reference. DO NOT use its Madd lengths as a timing standard.
-- UTHMANI_TEXT: The Quranic text the student should recite
-- PHONETIC_REF (if present): A mathematically precise phonetic transcription using the Quran phonetic alphabet.
-  In this alphabet: repeated vowel characters = Madd duration (اا=2 counts, اааа=4, аааааа=6).
-  Repeated ن characters = Ghunnah duration. This string is the ABSOLUTE GROUND TRUTH for timing rules.
+        const COMPREHENSIVE_TAJWEED_PROMPT = `You are a world-class Quran Tajweed Examiner and Shaykh (برواية حفص عن عاصم من طريق الشاطبية).
+Evaluate the student's recitation audio with uncompromising phonetic and Tajweed accuracy.
 
-═══ EVALUATION PHASES (follow in strict order) ═══
+INPUT SPECIFICATION:
+- AUDIO 1: The student's recitation recording.
+- AUDIO 2 (if present): Reference Sheikh clip for articulation benchmark.
+- UTHMANI_TEXT: The exact Quranic text the student must recite (with full diacritics / Tashkeel).
+- PHONETIC_REF (if present): Mathematical ground truth for timing rules:
+  • Repeated vowel chars = Madd counts: اا = 2 counts (طبيعي) · اااا = 4 counts (منفصل/متصل) · اااااا = 6 counts (لازم).
+  • Repeated ن/م chars = Ghunnah duration (2 counts).
 
-PHASE 1 — TRANSCRIPTION:
-Silently transcribe everything in AUDIO 1. This is your ground truth for Phase 2.
+═══ 6-PHASE EVALUATION PROTOCOL (STRICT ORDER) ═══
 
-PHASE 2 — COMPLETENESS CHECK (mandatory):
-Compare transcription word-by-word against UTHMANI_TEXT.
-- completenessRatio = words_recited / total_reference_words
-- For every complete ayah absent from audio → add one "omission" mistake (severity: "critical")
-- A student who stops early MUST receive a penalized score. Never give >50 if completenessRatio < 0.5.
+PHASE 1 — VERBATIM WORD AUDIT & COMPLETENESS:
+- Transcribe student's audio verbatim. Compare word-by-word against UTHMANI_TEXT.
+- Missing / Omitted word → Category: "omission", Severity: "critical".
+- Substituted word / Added word → Category: "pronunciation", Severity: "major".
+- Completeness check: completenessRatio = recited_words / total_words.
+  If completenessRatio < 0.50, final score MUST NOT exceed 50.
 
-PHASE 3 — MADD & GHUNNAH (use PHONETIC_REF if provided, otherwise estimate from knowledge):
-If PHONETIC_REF is provided:
-  - For each elongation group in student's audio, count repetitions of the vowel character
-  - Compare to PHONETIC_REF character count at that position
-  - If counts differ by 1+ → Madd error; severity = minor(1 count off), moderate(2 off), major(3+ off)
-If PHONETIC_REF is NOT provided:
-  - Apply standard Hafs rules: MaddTabee=2, MaddMonfasel=4, MaddMottasel=5, MaddLazem=6
-  - Estimate based on your Tajweed knowledge
+PHASE 2 — TASHKEEL & LAHN JALI (اللحن الجلي في الحركات والإعراب):
+- Check every single Harakah: Fatha (ـَ), Damma (ـُ), Kasra (ـِ), Sukun (ـْ), Tanween, Shadda (ـّ).
+- Vowel substitution (e.g. Damma instead of Fatha, or moving a Saakin letter) → Severity: "major" / "critical".
 
-PHASE 4 — MAKHRAJ CHECK (use AUDIO 2 if present):
-If AUDIO 2 is present:
-  - Compare student's articulation of identical letters to the Sheikh's
-  - Focus on these critical pairs: ع/ا, ح/ه, ق/ك, ط/ت, ص/س, ذ/ز, ظ/ز
-  - Only flag CLEAR, AUDIBLE articulation differences — do not flag unless certain
-If AUDIO 2 is NOT present:
-  - Apply Makhraj knowledge from the Uthmani text only
-  - Be conservative — only flag obvious errors
+PHASE 3 — MAKHARIJ AL-HURUF (مخارج الحروف):
+- Audit articulation points with zero tolerance for confusable letter pairs:
+  1. (ع / ء) [Ayn vs Hamza]
+  2. (ح / هـ) [Haa vs Haa']
+  3. (ق / ك) [Qaf vs Kaf]
+  4. (ط / ت) [Taa Mufakhama vs Taa Muraqaqa]
+  5. (ص / س) [Saad vs Seen]
+  6. (ظ / ذ / ز) [Zhaa vs Dhal vs Zay]
+  7. (ض / د) [Daad Mustateela vs Daal]
+  8. (ث / س) [Thaa vs Seen]
+- Flag any letter confusion under Category: "pronunciation", Severity: "major".
 
-PHASE 5 — TAJWEED RULES:
-Check for: Qalqalah (ق ط ب ج د when saakin), Idgham, Ikhfaa, Iqlab, Izhar
-Apply the correct rule based on UTHMANI_TEXT context.
+PHASE 4 — SIFAT & TAFKHEEM / TARQEEQ (الصفات والتفخيم والترقيق):
+- Tafkheem letters: (خ, ص, ض, غ, ط, ق, ظ) must be pronounced with Isti'laa & Tafkheem.
+- Raa (ر): Check Tafkheem vs Tarqeeq based on preceding vowel and sukun.
+- Lam (ل): Check Tafkheem in Lafz al-Jalalah (الله / اللهم) when preceded by Fatha/Damma.
+- Qalqalah: Check clear bounce on (ق, ط, ب, ج, د) when Saakin or at Waqf.
+- Hams: Check audible breath on (ت, ك) when Saakin.
 
-PHASE 6 — SCORE:
-completenessRatio = words_recited / total_words_in_reference
-tajweedAccuracy = 1 - (fraction of recited words with errors)
-finalScore = round(completenessRatio × tajweedAccuracy × 100)
+PHASE 5 — MADD & GHUNNAH (أحكام المدود والغنة):
+- Match student durations against PHONETIC_REF (or Hafs rules):
+  • Madd Tabee = 2 counts. If prolonged to 4 → error.
+  • Madd Monfasel = 4 counts (Shatibiyyah). If cut to 2 without license → error.
+  • Madd Mottasel = 4-5 counts.
+  • Madd Lazem = 6 counts strictly.
+  • Ghunnah in Noon/Meem Mushaddadah, Idgham bi-ghunnah, Ikhfa, Iqlab = 2 counts.
 
-Hard rules:
-- completenessRatio < 0.50 → score MUST be below 50
-- Score ≥ 90 requires reciting ≥95% of text with near-perfect Tajweed
-- NEVER inflate the score for incomplete recitation
+PHASE 6 — WAQF & IBTIDA (الوقف والابتداء):
+- Check appropriate pausing without breath interruptions inside single words or ugly stops (وقف قبيح).
 
-═══ OUTPUT FORMAT ═══
-Return ONLY this JSON object — no markdown, no explanation outside the JSON:
+═══ SCORING ALGORITHM ═══
+- Base Score = completenessRatio * 100
+- Deduct 15-25 points per Critical/Major error (Lahn Jali / Word Omission).
+- Deduct 5-10 points per Moderate error (Makhraj / Sifat / Madd Lazem/Mottasel violation).
+- Deduct 2-4 points per Minor error (Slight timing or mild Tajweed inaccuracy).
+- Score is clamped between 0 and 100.
+
+═══ OUTPUT JSON FORMAT (NO MARKDOWN OUTSIDE JSON) ═══
 {
   "score": <integer 0-100>,
   "mistakes": [
     {
-      "text": "<incorrect Arabic text heard>",
-      "correction": "<correct form with explanation>",
-      "description": "<Arabic explanation>",
+      "text": "<Arabic word heard incorrectly>",
+      "correction": "<correct Uthmani word with tashkeel>",
+      "description": "<Detailed Arabic explanation naming the specific Tajweed rule / error>",
       "category": "tajweed|pronunciation|elongation|waqf|omission",
       "severity": "minor|moderate|major|critical",
-      "phonetic_expected": "<expected phonetic chars if known, else empty string>",
-      "phonetic_heard": "<phonetic chars actually heard, else empty string>"
+      "phonetic_expected": "<expected phonetic string>",
+      "phonetic_heard": "<heard phonetic string>"
     }
   ]
 }`;
@@ -156,14 +159,14 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
         const hasPhoneticRef = !!phoneticRef;
 
         const sheikhNote = hasSheikhClip
-            ? `[AUDIO 2 is the Sheikh's reference clip for the FIRST ayah — use ONLY for Makhraj comparison]\n\n`
+            ? `[AUDIO 2 is the Sheikh's reference clip — use for Makhraj & Sifat comparison benchmark]\n\n`
             : '';
 
         const phoneticSection = hasPhoneticRef
-            ? `\nPHONETIC_REF (absolute ground-truth for Madd & Ghunnah durations):\n${phoneticRef}\n\nLEGEND:\n- Repeated vowel chars = Madd duration: اا=2 counts, اааа=4 counts, аааааа=6 counts\n- Repeated ن chars = Ghunnah duration\n- Use PHONETIC_REF character counts in PHASE 3 — DO NOT estimate from audio timing\n`
+            ? `\nPHONETIC_REF (Ground truth for Madd & Ghunnah timing):\n${phoneticRef}\n`
             : '';
 
-        const promptText = `${HYBRID_SYSTEM_PROMPT}\n\n═══ INPUT DATA ═══\n\n${sheikhNote}UTHMANI_TEXT (${ayahCount} Ayah${ayahCount > 1 ? 's' : ''} — student must recite ALL of this):\n${referenceText}${phoneticSection}`;
+        const promptText = `${COMPREHENSIVE_TAJWEED_PROMPT}\n\n═══ INPUT DATA ═══\n\n${sheikhNote}UTHMANI_TEXT (${ayahCount} Ayah${ayahCount > 1 ? 's' : ''}):\n${referenceText}${phoneticSection}`;
 
         const userMime = getAudioMimeType(userAudioMimeType);
 
@@ -193,16 +196,18 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
         for (let i = 0; i < modelNames.length; i++) {
             try {
                 modelUsed = modelNames[i];
-                console.log(`🤖 Trying model directly: ${modelUsed}`);
+                console.log(`🤖 Auditing recitation with model: ${modelUsed}`);
                 const model = genAI.getGenerativeModel({
                     model: modelUsed,
-                    generationConfig: { responseMimeType: 'application/json' }
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                        temperature: 0.1,
+                    },
                 });
                 result = await model.generateContent(parts);
                 break;
             } catch (modelError: any) {
-                console.warn(`⚠️ Model ${modelUsed} failed locally: ${modelError.message}`);
-                // if it's a quota issue on 1.5-flash or 3-flash, try next.
+                console.warn(`⚠️ Model ${modelUsed} failed: ${modelError.message}`);
                 if (i === modelNames.length - 1) throw modelError;
             }
         }
@@ -210,7 +215,6 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
         const response = await result.response;
         const text = response.text();
 
-        // ✅ Protected JSON parse — AI output can be malformed
         let assessment: RecitationAssessment;
         try {
             const cleaned = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
@@ -220,14 +224,15 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
             return {
                 mistakes: [],
                 score: 0,
-                error: 'فشل في قراءة نتيجة التحليل. يرجى المحاولة مرة أخرى.',
+                error: 'فشل في قراءة نتيجة التحليل التجويدي. يرجى المحاولة مرة أخرى.',
             };
         }
+
         assessment.modelUsed = modelUsed;
         return assessment;
     } catch (error: any) {
-        console.error('Error checking recitation locally:', error);
-        
+        console.error('Error in comprehensive recitation check:', error);
+
         let errorMessage = 'فشل في تحليل التلاوة. يرجى المحاولة مرة أخرى.';
         if (error.message?.includes('quota') || error.message?.includes('429')) {
             errorMessage = 'تم تجاوز حد الاستخدام المسموح به. يرجى المحاولة لاحقاً.';
@@ -240,7 +245,7 @@ Return ONLY this JSON object — no markdown, no explanation outside the JSON:
         return {
             mistakes: [],
             score: 0,
-            error: errorMessage
+            error: errorMessage,
         };
     }
 }
