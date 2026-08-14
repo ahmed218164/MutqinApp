@@ -40,10 +40,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders (only root level)
-/android/
-/ios/
-!modules/**/android/
-!modules/**/ios/
+# generated native folders
+/android
+/ios
+!/modules/**/android
+!/modules/**/ios
 to_take_in_review_2/
 to_take_in_review/

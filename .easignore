@@ -2,10 +2,12 @@
 node_modules/
 
 # ─── Local build artifacts ────────────────────────────────────────────────────
-android/
-ios/
-dist/
-build/
+/android/
+/ios/
+!modules/**/android/
+!modules/**/ios/
+/dist/
+/build/
 
 # ─── Expo cache / Metro cache ────────────────────────────────────────────────
 .expo/
