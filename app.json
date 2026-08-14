@@ -19,7 +19,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "NSMicrophoneUsageDescription": "Allow مُتقِن to access your microphone for Quran recitation assessment."
       }
     },
     "android": {
@@ -47,9 +48,8 @@
       "expo-router",
       "expo-sqlite",
       "expo-font",
-      "expo-audio",
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Allow مُتقِن to access your microphone for Quran recitation assessment."
         }
