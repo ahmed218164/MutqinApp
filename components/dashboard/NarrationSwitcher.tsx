@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Book, Repeat, ChevronRight } from 'lucide-react-native';
+import { BookOpen, ChevronLeft, Repeat } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { lightImpact } from '../../lib/haptics';
@@ -70,12 +70,16 @@ export default function NarrationSwitcher({ userId, onNarrationChange, activeNar
     }
 
     const isHafs = narration === 'Hafs';
+    const narrationLabel = isHafs ? 'حفص عن عاصم' : 'شعبة عن عاصم';
 
     return (
         <TouchableOpacity
             activeOpacity={0.9}
             onPress={toggleNarration}
             style={styles.container}
+            accessibilityRole="button"
+            accessibilityLabel={`تغيير الرواية، الرواية الحالية ${narrationLabel}`}
+            accessibilityHint="اضغط للتبديل بين حفص وشعبة"
         >
             <BlurView intensity={30} tint="dark" style={styles.glassContainer}>
                 <LinearGradient
@@ -88,20 +92,22 @@ export default function NarrationSwitcher({ userId, onNarrationChange, activeNar
                     style={styles.gradient}
                 >
                     <View style={styles.content}>
-                        <View style={styles.iconContainer}>
-                            <Book size={20} color={isHafs ? Colors.emerald[400] : Colors.gold[400]} />
+                        <View style={[styles.iconContainer, { backgroundColor: (isHafs ? Colors.emerald[400] : Colors.gold[400]) + '18' }]}>
+                            <BookOpen size={20} color={isHafs ? Colors.emerald[400] : Colors.gold[400]} />
                         </View>
 
                         <View style={styles.textContainer}>
-                            <Text style={styles.label}>Active Narration</Text>
+                            <Text style={styles.label}>الرواية المعتمدة</Text>
                             <View style={styles.row}>
-                                <Text style={styles.value}>{narration}</Text>
-                                {loading && <ActivityIndicator size="small" color={Colors.neutral[400]} style={{ marginLeft: 8 }} />}
+                                <Text style={styles.value}>{narrationLabel}</Text>
+                                {loading && <ActivityIndicator size="small" color={Colors.neutral[400]} style={styles.loader} />}
                             </View>
+                            <Text style={styles.hint}>اضغط للتبديل بين الروايتين</Text>
                         </View>
 
                         <View style={styles.actionIcon}>
-                            <Repeat size={18} color={Colors.neutral[400]} />
+                            <Repeat size={16} color={isHafs ? Colors.emerald[300] : Colors.gold[300]} />
+                            <ChevronLeft size={14} color={Colors.neutral[400]} />
                         </View>
                     </View>
                 </LinearGradient>
@@ -125,7 +131,7 @@ const styles = StyleSheet.create({
         padding: Spacing.md,
     },
     content: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         gap: Spacing.md,
     },
@@ -141,24 +147,39 @@ const styles = StyleSheet.create({
     },
     textContainer: {
         flex: 1,
+        alignItems: 'flex-end',
     },
     label: {
         fontSize: Typography.fontSize.xs,
         color: Colors.neutral[400],
         marginBottom: 2,
-        letterSpacing: 0.5,
-        textTransform: 'uppercase',
+        textAlign: 'right',
+        writingDirection: 'rtl',
     },
     value: {
         fontSize: Typography.fontSize.lg,
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
+        textAlign: 'right',
+        writingDirection: 'rtl',
     },
     row: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
     },
+    loader: {
+        marginRight: Spacing.sm,
+    },
+    hint: {
+        color: Colors.neutral[500],
+        fontSize: 11,
+        marginTop: 3,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
     actionIcon: {
+        flexDirection: 'row',
+        alignItems: 'center',
         padding: Spacing.xs,
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderRadius: BorderRadius.full,

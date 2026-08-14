@@ -223,6 +223,31 @@ function DailyWardCard({ ward, accentColor, isHafs, heroGradientColors, onStart,
                     </View>
                 </View>
 
+                {/* 3-Pillar Quranic Plan Badges */}
+                <View style={{ flexDirection: 'row-reverse', gap: 6, marginVertical: Spacing.sm, flexWrap: 'wrap' }}>
+                    {ward.alJadeed ? (
+                        <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#10b981' }}>
+                            <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '700' }}>
+                                🟢 الجديد: {ward.alJadeed.surahName}
+                            </Text>
+                        </View>
+                    ) : null}
+                    {ward.alQareeb ? (
+                        <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#f59e0b' }}>
+                            <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '700' }}>
+                                🟡 الصغرى: {ward.alQareeb.surahName}
+                            </Text>
+                        </View>
+                    ) : null}
+                    {ward.alBaeed ? (
+                        <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#ef4444' }}>
+                            <Text style={{ color: '#f87171', fontSize: 12, fontWeight: '700' }}>
+                                🔴 الكبرى: {ward.alBaeed.surahName}
+                            </Text>
+                        </View>
+                    ) : null}
+                </View>
+
                 {/* Backward segment (both mode) */}
                 {bwd && ward.direction === 'both' && (
                     <View style={[styles.bwdChip]}>
@@ -298,7 +323,8 @@ export default function Dashboard() {
                 activeChallenges,
                 reviews,
                 settings,
-                ward
+                ward,
+                surahProgressRows,
             // ✅ Parallel fetching
             ] = await Promise.all([
                 supabase
@@ -313,6 +339,13 @@ export default function Dashboard() {
                 fetchDueReviews(user.id),
                 getNotificationSettings(user.id),
                 getTodaysWard(user.id),
+                supabase
+                    .from('surah_progress')
+                    .select('surah_number, completed')
+                    .eq('user_id', user.id)
+                    .order('surah_number', { ascending: false })
+                    .limit(1)
+                    .then(({ data }) => data),
             ]);
 
             setDailyWard(ward);
@@ -371,16 +404,8 @@ export default function Dashboard() {
                 const surah = getSurahByNumber(profile.current_surah);
                 if (surah) setCurrentSurah({ name: surah.name, number: surah.number });
             } else {
-                // Last resort: find the highest surah_number that has a progress row
-                const { data: progressRows } = await supabase
-                    .from('surah_progress')
-                    .select('surah_number')
-                    .eq('user_id', user.id)
-                    .eq('completed', false)
-                    .order('surah_number', { ascending: false })
-                    .limit(1);
-
-                const lastSurah = progressRows?.[0]?.surah_number ?? 1;
+                // Last resort: use the latest tracked surah progress row already fetched above.
+                const lastSurah = surahProgressRows?.[0]?.surah_number ?? 1;
                 const surah = getSurahByNumber(lastSurah);
                 if (surah) setCurrentSurah({ name: surah.name, number: surah.number });
             }
@@ -453,19 +478,13 @@ export default function Dashboard() {
                     }
                 >
                     <StaggerIn delay={0}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={styles.dashboardHeader}>
                             <GreetingSection userName={userName} activeNarration={activeNarration} delay={0} />
                             <TouchableOpacity
                                 onPress={() => router.push('/search')}
-                                style={{
-                                    backgroundColor: 'rgba(16,185,129,0.15)',
-                                    borderRadius: 12,
-                                    padding: 10,
-                                    borderWidth: 1,
-                                    borderColor: 'rgba(16,185,129,0.3)',
-                                    marginBottom: 8,
-                                }}
+                                style={styles.searchButton}
                                 accessibilityLabel="بحث في القرآن"
+                                accessibilityHint="يفتح البحث في القرآن"
                             >
                                 <Search size={20} color={Colors.emerald[400]} />
                             </TouchableOpacity>
@@ -704,6 +723,20 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: Spacing.lg,
         paddingBottom: Spacing.xl,
+    },
+    dashboardHeader: {
+        flexDirection: 'row-reverse',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: Spacing.md,
+    },
+    searchButton: {
+        backgroundColor: 'rgba(16,185,129,0.15)',
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.32)',
+        marginTop: Spacing.xs,
     },
     section: {
         marginTop: Spacing.xl,

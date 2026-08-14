@@ -265,18 +265,18 @@ export function useRecitationSync(): RecitationSyncResult {
                     console.log(`[saveResults] Surah ${surahNumber}: ${versesDone}/${totalVerses} verses (rpc_completed=${rpcData?.out_completed}, final=${isSurahCompleted})`);
                 }
 
+                // Advance ward position in DB (plan-aware) after every session
+                try {
+                    await advanceWardPosition(userId, side, surahNumber, selectedRange.to, totalVerses);
+                    console.log(`[saveResults] Ward position advanced (${side}) to Ayah ${selectedRange.to}`);
+                } catch (wardErr) {
+                    console.warn('[saveResults] advanceWardPosition failed:', wardErr);
+                }
+
                 if (isSurahCompleted) {
                     console.log(`[saveResults] 🎉 Surah ${surahNumber} complete! Plan side: ${side}`);
                     await successHaptic();
                     await sendGoalCompletionNotification(surahName);
-
-                    // Advance ward position in DB (plan-aware)
-                    try {
-                        await advanceWardPosition(userId, side, surahNumber, selectedRange.to, totalVerses);
-                        console.log(`[saveResults] Ward position advanced (${side})`);
-                    } catch (wardErr) {
-                        console.warn('[saveResults] advanceWardPosition failed:', wardErr);
-                    }
 
                     // Determine if there IS a next surah in this direction
                     const hasNext = side === 'backward'

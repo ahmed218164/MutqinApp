@@ -3,11 +3,11 @@ import {
     View,
     Text,
     StyleSheet,
-    FlatList,
     TouchableOpacity,
     TextInput,
     Platform,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -32,7 +32,7 @@ import EmptyState from '../../components/ui/EmptyState';
 import { StaggerDelay } from '../../constants/animations';
 import SearchModal, { type SearchJumpTarget } from '../../components/mushaf/SearchModal';
 
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList) as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as any;
 
 // ── Glowing Metallic Ring for Surah Number ─────────────────────────────────
 function MetallicNumberRing({ number, accentColor }: { number: number; accentColor: string }) {
@@ -295,19 +295,10 @@ export default function MushafScreen() {
         });
     }
 
-    // ── FlatList optimisation constants ──────────────────────────────────
+    // ── FlashList optimisation constants ─────────────────────────────────
     // SurahRow height: paddingVertical(14*2) + arabicName(~20) + transliteration(~19)
     // + metaRow(~14) + wrapper borderWidth(1*2) = ~81px content + 8px marginBottom
-    const SURAH_ITEM_HEIGHT = 89;
-
-    const getItemLayout = React.useCallback(
-        (_data: any, index: number) => ({
-            length: SURAH_ITEM_HEIGHT,
-            offset: SURAH_ITEM_HEIGHT * index,
-            index,
-        }),
-        [],
-    );
+    const SURAH_ITEM_HEIGHT = 89; // SurahRow height calculation
 
     const renderSurah = React.useCallback(
         ({ item, index }: { item: Surah; index: number }) => (
@@ -406,17 +397,17 @@ export default function MushafScreen() {
                         icon={<BookOpen size={64} color={Colors.emerald[400]} />}
                     />
                 ) : (
-                    <AnimatedFlatList
+                    <AnimatedFlashList
                         data={filteredSurahs}
                         renderItem={renderSurah}
                         keyExtractor={(item: Surah) => item.number.toString()}
-                        getItemLayout={getItemLayout}
+                        estimatedItemSize={SURAH_ITEM_HEIGHT}
                         contentContainerStyle={styles.listContent}
                         showsVerticalScrollIndicator={false}
-                        initialNumToRender={12}
-                        maxToRenderPerBatch={5}
-                        windowSize={5}
-                        removeClippedSubviews={true}
+                        initialNumToRender={10}
+                        maxToRenderPerBatch={8}
+                        windowSize={7}
+                        removeClippedSubviews={Platform.OS === 'android'}
                         onScroll={scrollHandler}
                         scrollEventThrottle={16}
                     />

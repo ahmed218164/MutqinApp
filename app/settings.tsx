@@ -8,15 +8,27 @@ import {
     TouchableOpacity,
     Switch,
     Alert,
+    TextInput,
+    ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Moon, Sun, Type, LogOut, Bell, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Moon, Sun, Type, LogOut, Bell, Trash2, KeyRound, CheckCircle2, CircleAlert } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
 import Card from '../components/ui/Card';
 import { useAuth } from '../lib/auth';
 import { useSettings } from '../lib/settings';
+import { getSavedGeminiApiKey, saveGeminiApiKey, testGeminiConnection } from '../lib/gemini-api-key';
+import { MUTQIN_MODEL_ROUTES, MutqinModelTask } from '../lib/ai-models';
+
+const MODEL_ROUTE_LABELS: Record<MutqinModelTask, string> = {
+    dailyText: 'التخطيط والمساعدة اليومية',
+    detailedRecitation: 'تحليل التسميع المسجل',
+    liveAudio: 'المعلم الصوتي المباشر',
+    spokenFeedback: 'التغذية الراجعة الصوتية',
+    semanticSearch: 'البحث الذكي في المحتوى',
+};
 
 export default function SettingsScreen() {
     const router = useRouter();
@@ -24,6 +36,48 @@ export default function SettingsScreen() {
     const { theme, fontSize, toggleTheme, setFontSize } = useSettings();
     const DynColors = useThemeColors();
     const [loading, setLoading] = React.useState(false);
+    const [geminiKey, setGeminiKey] = React.useState('');
+    const [hasSavedGeminiKey, setHasSavedGeminiKey] = React.useState(false);
+    const [testingGemini, setTestingGemini] = React.useState(false);
+    const [geminiStatus, setGeminiStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+    const [availableCapabilities, setAvailableCapabilities] = React.useState<MutqinModelTask[]>([]);
+
+    React.useEffect(() => {
+        getSavedGeminiApiKey()
+            .then(key => setHasSavedGeminiKey(Boolean(key)))
+            .catch(() => setHasSavedGeminiKey(false));
+    }, []);
+
+    async function handleSaveGeminiKey() {
+        try {
+            await saveGeminiApiKey(geminiKey);
+            setGeminiKey('');
+            setHasSavedGeminiKey(true);
+            setGeminiStatus({ ok: true, text: 'تم حفظ المفتاح محلياً. اختبر الاتصال للتأكد من صلاحيته.' });
+        } catch (error) {
+            setGeminiStatus({ ok: false, text: error instanceof Error ? error.message : 'تعذّر حفظ المفتاح.' });
+        }
+    }
+
+    async function handleTestGeminiConnection() {
+        setTestingGemini(true);
+        const result = await testGeminiConnection(geminiKey);
+        setTestingGemini(false);
+        setGeminiStatus({ ok: result.ok, text: result.message });
+        setAvailableCapabilities(result.ok
+            ? (Object.keys(MUTQIN_MODEL_ROUTES) as MutqinModelTask[]).filter(task =>
+                MUTQIN_MODEL_ROUTES[task].some(model => result.availableModels.includes(model)))
+            : []);
+        if (result.ok && geminiKey.trim()) {
+            try {
+                await saveGeminiApiKey(geminiKey);
+                setGeminiKey('');
+                setHasSavedGeminiKey(true);
+            } catch {
+                // The connection already succeeded; keep the result visible.
+            }
+        }
+    }
 
     async function handleClearCache() {
         Alert.alert(
@@ -98,6 +152,73 @@ export default function SettingsScreen() {
                             thumbColor={Colors.neutral[50]}
                         />
                     </View>
+                </Card>
+
+                <Text style={styles.sectionTitle}>الذكاء الاصطناعي</Text>
+                <Card style={styles.settingCard}>
+                    <View style={styles.settingHeader}>
+                        <View style={styles.settingIcon}>
+                            <KeyRound color={Colors.emerald[600]} size={24} />
+                        </View>
+                        <View style={styles.settingInfo}>
+                            <Text style={styles.settingTitle}>مفتاح Gemini API</Text>
+                            <Text style={styles.settingDescription}>
+                                {hasSavedGeminiKey ? 'تم حفظ مفتاح محلياً على هذا الجهاز' : 'أدخل مفتاحاً من Google AI Studio'}
+                            </Text>
+                        </View>
+                    </View>
+                    <TextInput
+                        style={styles.apiKeyInput}
+                        value={geminiKey}
+                        onChangeText={text => {
+                            setGeminiKey(text);
+                            setGeminiStatus(null);
+                        }}
+                        placeholder={hasSavedGeminiKey ? 'أدخل مفتاحاً جديداً للاستبدال' : 'ألصق مفتاح Gemini API هنا'}
+                        placeholderTextColor={Colors.neutral[400]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        secureTextEntry
+                        textContentType="password"
+                    />
+                    <View style={styles.apiKeyActions}>
+                        <TouchableOpacity
+                            style={[styles.apiKeyButton, styles.testButton]}
+                            onPress={handleTestGeminiConnection}
+                            disabled={testingGemini}
+                        >
+                            {testingGemini ? <ActivityIndicator color={Colors.emerald[700]} /> : <Text style={styles.testButtonText}>اختبار الاتصال</Text>}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.apiKeyButton, styles.saveButton, !geminiKey.trim() && styles.buttonDisabled]}
+                            onPress={handleSaveGeminiKey}
+                            disabled={!geminiKey.trim()}
+                        >
+                            <Text style={styles.saveButtonText}>حفظ المفتاح</Text>
+                        </TouchableOpacity>
+                    </View>
+                    {geminiStatus && (
+                        <View style={[styles.apiStatus, geminiStatus.ok ? styles.apiStatusSuccess : styles.apiStatusError]}>
+                            {geminiStatus.ok ? <CheckCircle2 color={Colors.success} size={17} /> : <CircleAlert color={Colors.error} size={17} />}
+                            <Text style={[styles.apiStatusText, { color: geminiStatus.ok ? Colors.emerald[800] : Colors.error }]}>{geminiStatus.text}</Text>
+                        </View>
+                    )}
+                    {geminiStatus?.ok && (
+                        <View style={styles.capabilityList}>
+                            <Text style={styles.capabilityTitle}>القدرات المتاحة لهذا المفتاح</Text>
+                            {(Object.keys(MODEL_ROUTE_LABELS) as MutqinModelTask[]).map(task => {
+                                const available = availableCapabilities.includes(task);
+                                return (
+                                    <View key={task} style={styles.capabilityRow}>
+                                        <Text style={styles.capabilityText}>{MODEL_ROUTE_LABELS[task]}</Text>
+                                        <Text style={[styles.capabilityState, { color: available ? Colors.success : Colors.neutral[500] }]}>
+                                            {available ? 'متاح' : 'غير ظاهر في حسابك'}
+                                        </Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
                 </Card>
 
                 {/* Font Size Setting */}
@@ -236,6 +357,102 @@ const styles = StyleSheet.create({
     settingDescription: {
         fontSize: Typography.fontSize.sm,
         color: Colors.text.secondary,
+    },
+    apiKeyInput: {
+        marginTop: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.neutral[300],
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        color: Colors.text.primary,
+        fontSize: Typography.fontSize.sm,
+        writingDirection: 'ltr',
+        textAlign: 'left',
+    },
+    apiKeyActions: {
+        flexDirection: 'row-reverse',
+        gap: Spacing.sm,
+        marginTop: Spacing.md,
+    },
+    apiKeyButton: {
+        flex: 1,
+        alignItems: 'center',
+        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
+    },
+    testButton: {
+        borderWidth: 1,
+        borderColor: Colors.emerald[500],
+        backgroundColor: Colors.emerald[50],
+    },
+    testButtonText: {
+        color: Colors.emerald[700],
+        fontSize: Typography.fontSize.sm,
+        fontWeight: Typography.fontWeight.bold,
+    },
+    saveButton: {
+        backgroundColor: Colors.emerald[700],
+    },
+    saveButtonText: {
+        color: Colors.text.inverse,
+        fontSize: Typography.fontSize.sm,
+        fontWeight: Typography.fontWeight.bold,
+    },
+    buttonDisabled: {
+        opacity: 0.45,
+    },
+    apiStatus: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        marginTop: Spacing.md,
+        padding: Spacing.sm,
+        borderRadius: BorderRadius.base,
+    },
+    apiStatusSuccess: {
+        backgroundColor: Colors.emerald[50],
+    },
+    apiStatusError: {
+        backgroundColor: '#fef2f2',
+    },
+    apiStatusText: {
+        flex: 1,
+        fontSize: Typography.fontSize.xs,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
+    capabilityList: {
+        marginTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.neutral[200],
+        paddingTop: Spacing.sm,
+    },
+    capabilityTitle: {
+        color: Colors.text.secondary,
+        fontSize: Typography.fontSize.xs,
+        fontWeight: Typography.fontWeight.semibold,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+        marginBottom: Spacing.xs,
+    },
+    capabilityRow: {
+        flexDirection: 'row-reverse',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 5,
+    },
+    capabilityText: {
+        color: Colors.text.primary,
+        fontSize: Typography.fontSize.sm,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
+    capabilityState: {
+        fontSize: Typography.fontSize.xs,
+        fontWeight: Typography.fontWeight.semibold,
+        textAlign: 'left',
+        writingDirection: 'rtl',
     },
     fontSizeControls: {
         flexDirection: 'row',

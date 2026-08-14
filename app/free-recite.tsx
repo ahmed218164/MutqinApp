@@ -29,11 +29,29 @@ export default function FreeReciteScreen() {
     const surah = getSurahByNumber(selectedSurah);
 
     const handleListen = () => {
-        router.push(`/recite?surah=${selectedSurah}&from=${fromAyah}&to=${toAyah}&mode=listen`);
+        router.push({
+            pathname: '/recite',
+            params: {
+                surahNumber: selectedSurah.toString(),
+                surahName: surah?.name ?? '',
+                fromAyah: fromAyah.toString(),
+                toAyah: toAyah.toString(),
+                mode: 'listen',
+            },
+        });
     };
 
     const handleRecite = () => {
-        router.push(`/recite?surah=${selectedSurah}&from=${fromAyah}&to=${toAyah}&mode=recite`);
+        router.push({
+            pathname: '/recite',
+            params: {
+                surahNumber: selectedSurah.toString(),
+                surahName: surah?.name ?? '',
+                fromAyah: fromAyah.toString(),
+                toAyah: toAyah.toString(),
+                mode: 'recite',
+            },
+        });
     };
 
     return (
@@ -48,7 +66,7 @@ export default function FreeReciteScreen() {
                 </View>
 
                 <ScrollView style={styles.content}>
-                    <Card style={styles.card} variant="glass">
+                    <Card style={styles.card} variant="glassDark">
                         <Text style={styles.label}>السورة</Text>
                         <View style={styles.surahSelector}>
                             <TouchableOpacity
@@ -72,7 +90,7 @@ export default function FreeReciteScreen() {
                         </View>
                     </Card>
 
-                    <Card style={styles.card} variant="glass">
+                    <Card style={styles.card} variant="glassDark">
                         <Text style={styles.label}>نطاق الآيات</Text>
                         <View style={styles.rangeSelector}>
                             <View style={styles.rangeInput}>
@@ -153,16 +171,21 @@ const styles = StyleSheet.create({
     header: {
         padding: Spacing.xl,
         paddingTop: Spacing['3xl'],
+        alignItems: 'flex-end',
     },
     title: {
         fontSize: Typography.fontSize['3xl'],
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
         marginBottom: Spacing.xs,
+        textAlign: 'right',
+        writingDirection: 'rtl',
     },
     subtitle: {
         fontSize: Typography.fontSize.base,
         color: Colors.text.tertiary,
+        textAlign: 'right',
+        writingDirection: 'rtl',
     },
     content: {
         flex: 1,
@@ -176,9 +199,11 @@ const styles = StyleSheet.create({
         fontWeight: Typography.fontWeight.semibold,
         color: Colors.text.inverse,
         marginBottom: Spacing.md,
+        textAlign: 'right',
+        writingDirection: 'rtl',
     },
     surahSelector: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
@@ -209,7 +234,7 @@ const styles = StyleSheet.create({
         marginTop: Spacing.xs,
     },
     rangeSelector: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         gap: Spacing.lg,
     },
     rangeInput: {
@@ -220,6 +245,7 @@ const styles = StyleSheet.create({
         color: Colors.text.tertiary,
         marginBottom: Spacing.sm,
         textAlign: 'center',
+        writingDirection: 'rtl',
     },
     ayahSelector: {
         flexDirection: 'row',
@@ -247,13 +273,13 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     actions: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         gap: Spacing.md,
         marginTop: Spacing.lg,
     },
     button: {
         flex: 1,
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'center',
         gap: Spacing.sm,
@@ -279,5 +305,6 @@ const styles = StyleSheet.create({
         padding: Spacing.md,
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderRadius: BorderRadius.lg,
+        writingDirection: 'rtl',
     },
 });

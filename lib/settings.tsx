@@ -1,5 +1,6 @@
 import * as React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadGeminiApiKey } from './gemini-api-key';
 
 interface SettingsContextType {
     theme: 'light' | 'dark';
@@ -22,6 +23,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
                 const [savedTheme, savedFontSize] = await Promise.all([
                     AsyncStorage.getItem('theme'),
                     AsyncStorage.getItem('fontSize'),
+                    loadGeminiApiKey(),
                 ]);
 
                 if (savedTheme) setTheme(savedTheme as 'light' | 'dark');

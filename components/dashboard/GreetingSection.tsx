@@ -51,7 +51,7 @@ export default function GreetingSection({ userName, activeNarration = 'Hafs', de
 const styles = StyleSheet.create({
     container: {
         marginBottom: Spacing.xl,
-        paddingHorizontal: Spacing.md,
+        flex: 1,
     },
     greeting: {
         fontSize: Typography.fontSize.base,
@@ -59,6 +59,7 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xs,
         fontWeight: Typography.fontWeight.medium,
         textAlign: 'right',
+        writingDirection: 'rtl',
     },
     name: {
         fontSize: Typography.fontSize['3xl'],
@@ -67,11 +68,13 @@ const styles = StyleSheet.create({
         letterSpacing: 0,
         marginBottom: Spacing.sm,
         textAlign: 'right',
+        writingDirection: 'rtl',
     },
     motivation: {
         fontSize: Typography.fontSize.sm,
         color: Colors.neutral[300],
         lineHeight: 21,
         textAlign: 'right',
+        writingDirection: 'rtl',
     },
 });

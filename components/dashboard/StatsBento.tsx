@@ -35,11 +35,12 @@ function GradientBorderCard({
     const translateY = useSharedValue(14);
 
     React.useEffect(() => {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             fadeAnim.value = withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) });
             translateY.value = withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) });
         }, delay);
-    }, []);
+        return () => clearTimeout(timer);
+    }, [delay, fadeAnim, translateY]);
 
     const animStyle = useAnimatedStyle(() => ({
         opacity: fadeAnim.value,

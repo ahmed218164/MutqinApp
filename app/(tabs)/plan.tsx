@@ -11,7 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 import DatePickerModal from '../../components/ui/DatePickerModal';
-import { CalendarDays, CheckCircle2, BookOpen, Clock, Target } from 'lucide-react-native';
+import { CalendarDays, CheckCircle2, BookOpen, Clock, Target, TrendingUp, Award, Check } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import Animated, {
     useSharedValue,
@@ -28,8 +28,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { useRouter } from 'expo-router';
 import { StaggerDelay } from '../../constants/animations';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import { getTodaysWard, DailyWard } from '../../lib/ward';
+import { getSurahByNumber } from '../../constants/surahs';
 
 type MemorizationLevel = 'beginner' | 'basic' | 'intermediate' | 'advanced';
 type TimeSlot = 'fajr' | 'morning' | 'afternoon' | 'maghrib' | 'flexible';
@@ -127,17 +127,22 @@ export default function PlanScreen() {
     const [hasWardPlan, setHasWardPlan] = React.useState(false);
     const [planSuccess, setPlanSuccess] = React.useState<null | { totalDays: number; dailyPages: number }>(null);
     const [planError, setPlanError] = React.useState<string | null>(null);
-    // true when a legacy user was auto-upgraded silently
     const [legacyAutoUpgraded, setLegacyAutoUpgraded] = React.useState(false);
     const [legacyDailyPages, setLegacyDailyPages] = React.useState<number | null>(null);
+    const [todaysWard, setTodaysWard] = React.useState<DailyWard | null>(null);
 
-    // Success card animation
     const successScale = useSharedValue(0.8);
     const successOpacity = useSharedValue(0);
     const successAnimStyle = useAnimatedStyle(() => ({
         transform: [{ scale: successScale.value }],
         opacity: successOpacity.value,
     }));
+
+    // Derived UI values
+    const isHafs = qiraat === 'Hafs';
+    const accentColor = isHafs ? Colors.emerald[400] : Colors.gold[400];
+    const gradientColors = isHafs ? Colors.gradients.primary : Colors.gradients.gold;
+    const daysUntilTarget = Math.max(0, Math.floor((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
     React.useEffect(() => {
         loadProfile();
@@ -172,7 +177,9 @@ export default function PlanScreen() {
         try {
             if (!user) return;
 
-            // ── Check user_plans (AI-generated plan) ─────────────────────────
+            const ward = await getTodaysWard(user.id);
+            setTodaysWard(ward);
+
             const { data: userPlanRows } = await supabase
                 .from('user_plans')
                 .select('id')
@@ -181,7 +188,6 @@ export default function PlanScreen() {
             const hasUserPlan = userPlanRows != null && userPlanRows.length > 0;
             setHasExistingPlan(hasUserPlan);
 
-            // ── Check memorization_plan (ward direction plan) ─────────────────
             const { data: wardData } = await supabase
                 .from('memorization_plan')
                 .select('id, daily_pages')
@@ -189,10 +195,6 @@ export default function PlanScreen() {
                 .maybeSingle();
             setHasWardPlan(wardData != null);
 
-            // ── LEGACY USER UPGRADE ──────────────────────────────────────────
-            // User has a ward plan (old-style) but no AI user_plan (new-style).
-            // Silently generate a local plan from their existing profile data
-            // so they don't hit a blank form when they visit this screen.
             if (!hasUserPlan && wardData) {
                 await autoUpgradeLegacyUser(wardData.daily_pages ?? 1);
             }
@@ -201,35 +203,25 @@ export default function PlanScreen() {
         }
     }
 
-    /**
-     * Auto-upgrades a legacy user who has memorization_plan but no user_plans.
-     * Reads their existing profile, computes daily_pages, and inserts a minimal
-     * user_plans record so the dashboard and ward system work correctly.
-     * Never asks the user anything — fully transparent.
-     */
     async function autoUpgradeLegacyUser(existingDailyPages: number) {
         try {
             if (!user) return;
 
-            // Read existing profile
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('nickname, age, target_date, qiraat')
                 .eq('id', user.id)
                 .single();
 
-            // Compute sensible defaults from whatever we have
-            const ageNum  = profile?.age ?? 25;
-            const tDate   = profile?.target_date
+            const ageNum = profile?.age ?? 25;
+            const tDate = profile?.target_date
                 ? new Date(profile.target_date)
                 : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-            const daysLeft = Math.max(30, Math.floor((tDate.getTime() - Date.now()) / 86400000));
 
-            // Fill in UI fields so the form looks pre-filled if user opens it
             if (profile?.nickname) setNickname(profile.nickname);
-            if (profile?.age)      setAge(String(profile.age));
+            if (profile?.age) setAge(String(profile.age));
             if (profile?.target_date) setTargetDate(tDate);
-            if (profile?.qiraat)   setQiraat(profile.qiraat);
+            if (profile?.qiraat) setQiraat(profile.qiraat);
 
             // Generate an algorithmic pace (same as Edge Function local fallback)
             const pagesPerDay    = Math.max(1, ageNum < 15 ? 1.0 : ageNum < 25 ? 1.5 : ageNum < 40 ? 1.0 : 0.5);
@@ -282,7 +274,7 @@ export default function PlanScreen() {
             }
 
             // Also sync daily_pages → memorization_plan (use existing value or recalculate)
-            const dp = existingDailyPages > 0 ? existingDailyPages : Math.max(1, Math.round(604 / daysLeft));
+            const dp = existingDailyPages > 0 ? existingDailyPages : Math.max(1, Math.round(604 / Math.max(1, totalDays)));
             await supabase.from('memorization_plan').update({
                 daily_pages: dp,
                 updated_at:  new Date().toISOString(),
@@ -396,11 +388,6 @@ export default function PlanScreen() {
         }
     }
 
-    const isHafs = qiraat === 'Hafs';
-    const accentColor = isHafs ? Colors.emerald[400] : Colors.gold[400];
-    const gradientColors = isHafs ? Colors.gradients.primary : Colors.gradients.gold;
-    const daysUntilTarget = Math.max(0, Math.floor((targetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-
     return (
         <View style={styles.container}>
             <ModernBackground />
@@ -410,7 +397,7 @@ export default function PlanScreen() {
                 <View style={styles.header}>
                     <Text style={styles.title}>خطة الحفظ الذكية</Text>
                     <Text style={styles.subtitle}>
-                        {hasExistingPlan ? 'تعديل خطتك المخصصة' : 'خطة مخصصة بالذكاء الاصطناعي'}
+                        {hasExistingPlan ? 'متابعة وتعديل خطتك المخصصة' : 'خطة مخصصة بالذكاء الاصطناعي'}
                     </Text>
                 </View>
 
@@ -448,9 +435,7 @@ export default function PlanScreen() {
                     ══════════════════════════════════════════ */}
                     {planSuccess && (
                         <Animated.View style={[styles.successCardWrapper, successAnimStyle]}>
-                            {/* Neon emerald glow orb behind card */}
                             <View style={styles.successGlowOrb} />
-
                             <LinearGradient
                                 colors={['rgba(5,46,37,0.98)', 'rgba(2,44,34,0.97)', 'rgba(6,95,70,0.9)']}
                                 start={{ x: 0, y: 0 }}
@@ -458,14 +443,6 @@ export default function PlanScreen() {
                                 style={StyleSheet.absoluteFill}
                             />
                             <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-
-                            {/* Inner glow border shimmer */}
-                            <LinearGradient
-                                colors={['rgba(52,211,153,0.5)', 'rgba(52,211,153,0)', 'rgba(251,191,36,0.3)']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={styles.successBorderGradient}
-                            />
 
                             <View style={styles.successCardInner}>
                                 <View style={styles.successIcon}>
@@ -502,7 +479,6 @@ export default function PlanScreen() {
                                     </View>
                                 </View>
 
-                                {/* Ward setup button — only if ward plan not configured yet */}
                                 {!hasWardPlan && (
                                     <TouchableOpacity
                                         style={styles.wardSetupBtn}
@@ -519,34 +495,56 @@ export default function PlanScreen() {
                     )}
 
                     {/* ══════════════════════════════════════════
-                        BASIC INFO
+                        LIVE PROGRESS TRACKER CARD
                     ══════════════════════════════════════════ */}
+                    {todaysWard && todaysWard.planExists && (
+                        <Card style={{ marginBottom: Spacing.lg, padding: 18, borderColor: 'rgba(52, 211, 153, 0.3)', borderWidth: 1 }} variant="glass">
+                            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                                    <Award color={Colors.emerald[400]} size={22} />
+                                    <Text style={{ fontSize: 18, fontWeight: '700', color: '#ffffff' }}>
+                                        متابعة إنجاز الحفظ
+                                    </Text>
+                                </View>
+                                <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                                    <Text style={{ color: Colors.emerald[300], fontSize: 12, fontWeight: '700' }}>
+                                        {todaysWard.alJadeed?.progressPercent ?? 0}% مكتمل
+                                    </Text>
+                                </View>
+                            </View>
 
-                    {/* Nickname */}
-                    <Card style={styles.settingCard} variant="glass" animated delay={StaggerDelay * 0}>
-                        <Text style={styles.label}>الاسم المستعار</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="مثال: أحمد"
-                            placeholderTextColor={Colors.neutral[500]}
-                            value={nickname}
-                            onChangeText={setNickname}
-                        />
-                    </Card>
+                            <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: 12, marginBottom: 14 }}>
+                                <Text style={{ color: Colors.neutral[400], fontSize: 12, marginBottom: 4, textAlign: 'right' }}>
+                                    📍 موقع الحفظ الحالي:
+                                </Text>
+                                <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700', textAlign: 'right' }}>
+                                    سورة {todaysWard.alJadeed?.surahName ?? 'الفاتحة'} ({todaysWard.alJadeed?.isWholeSurah ? 'كامل السورة' : `آية ${todaysWard.alJadeed?.verseFrom} - ${todaysWard.alJadeed?.verseTo}`})
+                                </Text>
+                            </View>
 
-                    {/* Age */}
-                    <Card style={styles.settingCard} variant="glass" animated delay={StaggerDelay * 1}>
-                        <Text style={styles.label}>العمر</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="مثال: 25"
-                            placeholderTextColor={Colors.neutral[500]}
-                            value={age}
-                            onChangeText={setAge}
-                            keyboardType="number-pad"
-                        />
-                        <Text style={styles.hint}>سيتم تخصيص الخطة حسب عمرك</Text>
-                    </Card>
+                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                                <View style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.12)', borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                                    <CheckCircle2 color={Colors.emerald[400]} size={20} />
+                                    <Text style={{ color: Colors.emerald[300], fontSize: 18, fontWeight: '800', marginTop: 4 }}>
+                                        {Math.round(((todaysWard.alJadeed?.progressPercent ?? 0) / 100) * 604)}
+                                    </Text>
+                                    <Text style={{ color: Colors.neutral[400], fontSize: 11, marginTop: 2 }}>صفحة منجزة</Text>
+                                </View>
+
+                                <View style={{ flex: 1, backgroundColor: 'rgba(245, 158, 11, 0.12)', borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                                    <Clock color={Colors.gold[400]} size={20} />
+                                    <Text style={{ color: Colors.gold[300], fontSize: 18, fontWeight: '800', marginTop: 4 }}>
+                                        {604 - Math.round(((todaysWard.alJadeed?.progressPercent ?? 0) / 100) * 604)}
+                                    </Text>
+                                    <Text style={{ color: Colors.neutral[400], fontSize: 11, marginTop: 2 }}>صفحة متبقية</Text>
+                                </View>
+                            </View>
+
+                            <View style={{ height: 8, backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden' }}>
+                                <View style={{ height: '100%', width: `${todaysWard.alJadeed?.progressPercent ?? 0}%`, backgroundColor: Colors.emerald[400] }} />
+                            </View>
+                        </Card>
+                    )}
 
                     {/* Target Date */}
                     <Card style={styles.settingCard} variant="glass" animated delay={StaggerDelay * 2}>

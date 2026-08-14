@@ -1,0 +1,15 @@
+{
+  "name": "LiveAudioStream",
+  "platforms": ["android", "ios"],
+  "android": {
+    "package": "com.mutqin.liveaudiostream",
+    "modules": [
+      "com.mutqin.liveaudiostream.LiveAudioStreamModule"
+    ]
+  },
+  "ios": {
+    "modules": [
+      "LiveAudioStreamModule"
+    ]
+  }
+}

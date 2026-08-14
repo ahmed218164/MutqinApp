@@ -1,31 +1,15 @@
-/**
- * components/recite/ReciterBottomSheet.tsx
- *
- * Professional reciter selection sheet using @gorhom/bottom-sheet.
- * 
- * Two tabs:
- *   - "متصل" (Gapless) — Surah-level reciters with timing DB
- *   - "آيات" (Ayah-by-Ayah) — Per-verse reciters
- *
- * Mirrors the native Android reference app's "اختر القارئ" sheet.
- *
- * BUG FIX: renderReciterItem now correctly captures the latest onSelect
- * via a ref, preventing stale closure issues that caused taps to do nothing.
- */
-
 import * as React from 'react';
 import {
-    View, Text, TouchableOpacity, StyleSheet,
+    View, Text, TouchableOpacity, StyleSheet, TextInput, Platform,
 } from 'react-native';
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import { Music, Check, X, Radio, Layers } from 'lucide-react-native';
-import { Colors } from '../../constants/theme';
+import { Music, Check, X, Radio, Layers, Search, Mic } from 'lucide-react-native';
+import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { RECITERS_LIBRARY, Reciter, getRecitersByQiraat } from '../../lib/audio-reciters';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface ReciterBottomSheetProps {
-    /** Ref to imperatively open/close the sheet */
     sheetRef: React.RefObject<BottomSheetModal>;
     onSelect: (reciter: Reciter) => void;
     currentReciterId?: string;
@@ -34,30 +18,17 @@ interface ReciterBottomSheetProps {
 
 type AudioTab = 'gapless' | 'ayah';
 
-// ── Constants for FlatList optimisation ──────────────────────────────────────
-// Declared at module level so they are never re-created on re-render.
+const ITEM_HEIGHT = 86;
 
-/**
- * Fixed height of each reciter card:
- *   padding (14×2=28) + border (1.5×2=3) + avatar height (44) + marginBottom (8) = 83
- */
-const ITEM_HEIGHT = 83;
-
-/** Stable keyExtractor — avoids a new function object on every render. */
 const keyExtractor = (item: Reciter) => item.id;
 
-/**
- * Stable getItemLayout — lets VirtualizedList skip measurement on every scroll
- * frame because all rows have the same fixed height.
- */
 const getItemLayout = (_: ArrayLike<Reciter> | null | undefined, index: number) => ({
     length: ITEM_HEIGHT,
     offset: ITEM_HEIGHT * index,
     index,
 });
 
-// ── Memoised row ─────────────────────────────────────────────────────────────
-// Extracted so VirtualizedList can skip re-renders when props are unchanged.
+// ── Memoised row for 60 FPS scrolling ───────────────────────────────────────
 
 interface ReciterItemProps {
     item: Reciter;
@@ -70,27 +41,19 @@ const ReciterItem = React.memo<ReciterItemProps>(function ReciterItem({
     isSelected,
     onSelect,
 }: ReciterItemProps) {
-    // Stable press handler — useCallback keeps referential equality so
-    // React.memo can bail out even when the parent re-renders.
     const handlePress = React.useCallback(() => onSelect(item), [item, onSelect]);
 
     return (
         <TouchableOpacity
             style={[styles.reciterCard, isSelected && styles.reciterCardSelected]}
             onPress={handlePress}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
         >
-            {/* Avatar circle with initial */}
             <View style={[
                 styles.avatar,
                 isSelected && { backgroundColor: Colors.emerald[500] },
             ]}>
-                <Text style={[
-                    styles.avatarText,
-                    isSelected && { color: '#fff' },
-                ]}>
-                    {item.nameArabic.charAt(0)}
-                </Text>
+                <Mic size={20} color={isSelected ? '#ffffff' : Colors.emerald[400]} />
             </View>
 
             <View style={styles.reciterInfo}>
@@ -119,8 +82,6 @@ const ReciterItem = React.memo<ReciterItemProps>(function ReciterItem({
     );
 });
 
-// ── Component ────────────────────────────────────────────────────────────────
-
 export default function ReciterBottomSheet({
     sheetRef,
     onSelect,
@@ -128,24 +89,28 @@ export default function ReciterBottomSheet({
     qiraat = 'Hafs',
 }: ReciterBottomSheetProps) {
     const [activeTab, setActiveTab] = React.useState<AudioTab>('ayah');
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const deferredSearchQuery = React.useDeferredValue(searchQuery);
 
-    // ── FIX: Use a ref to always have the latest onSelect callback ────────
-    // This prevents the stale closure in renderReciterItem's useCallback
     const onSelectRef = React.useRef(onSelect);
     onSelectRef.current = onSelect;
 
-    // Build filtered lists based on Qiraat + audio type
     const reciters = React.useMemo(() => {
         const all = qiraat ? getRecitersByQiraat(qiraat) : RECITERS_LIBRARY;
+        const filtered = deferredSearchQuery.trim()
+            ? all.filter(r =>
+                r.nameArabic.includes(deferredSearchQuery) ||
+                r.name.toLowerCase().includes(deferredSearchQuery.toLowerCase())
+              )
+            : all;
         return {
-            gapless: all.filter(r => r.audioType === 'gapless'),
-            ayah:    all.filter(r => r.audioType === 'ayah'),
+            gapless: filtered.filter(r => r.audioType === 'gapless'),
+            ayah:    filtered.filter(r => r.audioType === 'ayah'),
         };
-    }, [qiraat]);
+    }, [qiraat, deferredSearchQuery]);
 
     const currentList = activeTab === 'gapless' ? reciters.gapless : reciters.ayah;
 
-    // Auto-select tab based on current reciter
     React.useEffect(() => {
         const current = RECITERS_LIBRARY.find(r => r.id === currentReciterId);
         if (current) {
@@ -153,7 +118,7 @@ export default function ReciterBottomSheet({
         }
     }, [currentReciterId]);
 
-    const snapPoints = React.useMemo(() => ['60%', '85%'], []);
+    const snapPoints = React.useMemo(() => ['65%', '90%'], []);
 
     const renderBackdrop = React.useCallback(
         (props: any) => (
@@ -161,19 +126,17 @@ export default function ReciterBottomSheet({
                 {...props}
                 disappearsOnIndex={-1}
                 appearsOnIndex={0}
-                opacity={0.6}
+                opacity={0.65}
             />
         ),
         [],
     );
 
-    // handleSelect uses the ref so it never goes stale
     const handleSelect = React.useCallback((reciter: Reciter) => {
         onSelectRef.current(reciter);
         sheetRef.current?.dismiss();
     }, [sheetRef]);
 
-    // Stable dismiss handler for the close button
     const handleDismiss = React.useCallback(() => {
         sheetRef.current?.dismiss();
     }, [sheetRef]);
@@ -208,6 +171,23 @@ export default function ReciterBottomSheet({
                 >
                     <X size={22} color={Colors.neutral[400]} />
                 </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View style={styles.searchBox}>
+                <Search size={18} color={Colors.emerald[400]} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="ابحث عن قارئ بالاسم..."
+                    placeholderTextColor={Colors.neutral[400]}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+                {searchQuery ? (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <X size={16} color={Colors.neutral[400]} />
+                    </TouchableOpacity>
+                ) : null}
             </View>
 
             {/* Tab bar: Gapless / Ayah-by-Ayah */}
@@ -267,9 +247,9 @@ export default function ReciterBottomSheet({
                 getItemLayout={getItemLayout}
                 contentContainerStyle={styles.list}
                 showsVerticalScrollIndicator={false}
-                removeClippedSubviews={true}
-                initialNumToRender={10}
-                maxToRenderPerBatch={5}
+                removeClippedSubviews={Platform.OS === 'android'}
+                initialNumToRender={8}
+                maxToRenderPerBatch={6}
                 windowSize={5}
             />
         </BottomSheetModal>
@@ -280,26 +260,25 @@ export default function ReciterBottomSheet({
 
 const styles = StyleSheet.create({
     sheetBackground: {
-        backgroundColor: '#0d1117',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
+        backgroundColor: '#06201b',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
     },
     handleIndicator: {
-        backgroundColor: Colors.neutral[600],
-        width: 40,
+        backgroundColor: Colors.emerald[400] + '60',
+        width: 44,
+        height: 5,
     },
-
-    // ── Header ──
     header: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
         paddingTop: 4,
-        paddingBottom: 12,
+        paddingBottom: 10,
     },
     headerLeft: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         gap: 10,
     },
@@ -307,15 +286,33 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontWeight: '700',
         color: '#fff',
-        fontFamily: 'System',
+        writingDirection: 'rtl',
     },
     closeButton: {
         padding: 6,
     },
-
-    // ── Tabs ──
+    searchBox: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(52, 211, 153, 0.2)',
+        gap: 10,
+    },
+    searchInput: {
+        flex: 1,
+        color: '#ffffff',
+        fontSize: 15,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
     tabBar: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         marginHorizontal: 16,
         marginBottom: 12,
         backgroundColor: 'rgba(255,255,255,0.05)',
@@ -324,7 +321,7 @@ const styles = StyleSheet.create({
     },
     tab: {
         flex: 1,
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
@@ -332,20 +329,20 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     tabActive: {
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
     },
     tabText: {
         fontSize: 15,
         fontWeight: '600',
-        color: Colors.neutral[500],
+        color: Colors.neutral[400],
     },
     tabTextActive: {
-        color: Colors.emerald[400],
+        color: Colors.emerald[300],
     },
     tabCount: {
         fontSize: 11,
         fontWeight: '700',
-        color: Colors.neutral[600],
+        color: Colors.neutral[400],
         backgroundColor: 'rgba(255,255,255,0.06)',
         paddingHorizontal: 6,
         paddingVertical: 2,
@@ -353,65 +350,59 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     tabCountActive: {
-        color: Colors.emerald[400],
-        backgroundColor: Colors.emerald[400] + '18',
+        color: Colors.emerald[300],
+        backgroundColor: Colors.emerald[500] + '25',
     },
-
-    // ── List ──
     list: {
         paddingHorizontal: 16,
         paddingBottom: 40,
     },
-
-    // ── Reciter Card ──
     reciterCard: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.04)',
-        borderRadius: 14,
+        borderRadius: 16,
         padding: 14,
         marginBottom: 8,
         borderWidth: 1.5,
         borderColor: 'transparent',
     },
     reciterCardSelected: {
-        borderColor: Colors.emerald[500] + '60',
-        backgroundColor: Colors.emerald[500] + '08',
+        borderColor: Colors.emerald[400],
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
     },
     avatar: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 12,
-    },
-    avatarText: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: Colors.neutral[400],
+        marginLeft: 12,
     },
     reciterInfo: {
         flex: 1,
+        alignItems: 'flex-end',
     },
     reciterName: {
         fontSize: 16,
         fontWeight: '700',
         color: '#fff',
         marginBottom: 2,
+        textAlign: 'right',
     },
     reciterSubName: {
         fontSize: 12,
         color: Colors.neutral[400],
         marginBottom: 6,
+        textAlign: 'right',
     },
     badges: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         gap: 6,
     },
     badge: {
-        backgroundColor: 'rgba(234, 179, 8, 0.12)',
+        backgroundColor: 'rgba(234, 179, 8, 0.15)',
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 6,
@@ -422,12 +413,12 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     checkmark: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         backgroundColor: Colors.emerald[500],
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: 8,
+        marginRight: 8,
     },
 });

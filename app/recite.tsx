@@ -106,16 +106,27 @@ function ReciteScreenInner() {
     const { saving, saveResults } = useRecitationSync();
 
     // Unified Audio Control States
-    const [audioMode, setAudioMode] = React.useState<AudioMode>('closed');
+    const [audioMode, setAudioMode] = React.useState<AudioMode>(() => {
+        if (params.mode === 'listen') return 'listen';
+        if (params.mode === 'recite') return 'record';
+        return 'closed';
+    });
     const [activeVerseIndex, setActiveVerseIndex] = React.useState<number | null>(null);
 
     // ── Reciter state ────────────────────────────────────────────────────────
     const [selectedReciter, setSelectedReciter] = React.useState<Reciter>(getDefaultReciter());
+    const [reciterConfirmed, setReciterConfirmed] = React.useState(false);
+    const [resumeListeningAfterReciter, setResumeListeningAfterReciter] = React.useState(false);
     const reciterSheetRef = React.useRef<BottomSheetModal>(null);
 
     const handleReciterSelect = React.useCallback((reciter: Reciter) => {
         setSelectedReciter(reciter);
-    }, []);
+        setReciterConfirmed(true);
+        if (resumeListeningAfterReciter) {
+            setResumeListeningAfterReciter(false);
+            setAudioMode('listen');
+        }
+    }, [resumeListeningAfterReciter]);
 
     // Range Selection States
     const [selectedRange, setSelectedRange] = React.useState({ from: 1, to: 1 });
@@ -825,6 +836,11 @@ function ReciteScreenInner() {
                         onSheikhClipReady={(url) => { sheikhClipUrlRef.current = url; }}
                         selectedReciter={selectedReciter}
                         onReciterAvatarPress={() => reciterSheetRef.current?.present()}
+                        reciterConfirmed={reciterConfirmed}
+                        onReciterSelectionRequired={() => {
+                            setResumeListeningAfterReciter(true);
+                            reciterSheetRef.current?.present();
+                        }}
                         bottomInset={insets.bottom}
                     />
                 </Animated.View>
@@ -863,6 +879,7 @@ function ReciteScreenInner() {
                     visible={showLiveModal}
                     onClose={() => setShowLiveModal(false)}
                     surahName={surah?.name || surahName}
+                    surahNumber={surahNumber}
                 />
             </View>
 
@@ -1033,7 +1050,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         left: 16,
         right: 16,
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         borderRadius: 28,
         paddingHorizontal: 8,
@@ -1049,7 +1066,7 @@ const styles = StyleSheet.create({
     },
     actionBarButton: {
         flex: 1,
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
@@ -1061,6 +1078,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '700',
         letterSpacing: 0.2,
+        writingDirection: 'rtl',
     },
 
     // ── Loading & Error ──

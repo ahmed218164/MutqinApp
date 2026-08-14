@@ -4,26 +4,85 @@
  */
 
 import { GoogleGenerativeAI, Part } from '@google/generative-ai';
+import { getActiveGeminiApiKey } from './gemini-api-key';
 
 // ============================================
-// Model IDs (CRITICAL - DO NOT CHANGE)
+// Model IDs — tuned to the user's actual rate limits:
+//   gemini-3.5-flash-lite : 15 RPM · 250K TPM · 500 RPD  ← best budget model
+//   gemini-3.1-flash-lite : 15 RPM · 250K TPM · 500 RPD  ← same tier, good fallback
+//   gemini-3.6-flash      :  5 RPM · 250K TPM ·  20 RPD  ← latest, but low RPD
+//   gemini-3.5-flash      :  5 RPM · 250K TPM ·  20 RPD
+//   gemini-3-flash        :  5 RPM · 250K TPM ·  20 RPD
 // ============================================
 export const AI_MODELS = {
-    PLAN_ARCHITECT: 'gemini-3.5-flash-lite',      // Plan generation & fast assistant
-    PRIMARY_AUDITOR: 'gemini-3.5-flash',           // Primary audio recitation auditing
-    SECONDARY_AUDITOR: 'gemini-3-flash',           // Secondary audio fallback
-    RANDOM_TESTER: 'gemini-3.1-flash-lite',        // Fast random tests & light fallback
+    // 500 RPD tier: default for frequent plan, challenge, and recitation work.
+    PLAN_ARCHITECT:    'gemini-3.5-flash-lite',
+    PRIMARY_AUDITOR:   'gemini-3.5-flash-lite',
+    // Second 500 RPD tier. Quality Flash models remain reserved for retries.
+    SECONDARY_AUDITOR: 'gemini-3.1-flash-lite',
+    RANDOM_TESTER:     'gemini-3.1-flash-lite',
 } as const;
+
+/**
+ * Models enabled for Mutqin's actual workflows. Keep this registry separate
+ * from the UI's model list: availability still depends on the user's API key.
+ *
+ * - Lite models cover frequent, short study actions without exhausting RPD.
+ * - Flash models are reserved for detailed recitation analysis and recovery.
+ * - Live native audio is registered for a future PCM-stream recorder only;
+ *   expo-audio currently produces completed m4a/wav files, not PCM frames.
+ */
+export const MUTQIN_MODEL_ROUTES = {
+    dailyText: [
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-2.5-flash-lite',
+    ],
+    detailedRecitation: [
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+        'gemini-3-flash',
+        'gemini-3.6-flash',
+    ],
+    liveAudio: [
+        'gemini-2.5-flash-native-audio-preview-12-2025',
+        'gemini-3-flash-live',
+    ],
+    spokenFeedback: [
+        'gemini-2.5-flash-tts',
+        'gemini-3.1-flash-tts',
+    ],
+    semanticSearch: [
+        'gemini-embedding-001',
+        'gemini-embedding-2-preview',
+    ],
+} as const;
+
+export type MutqinModelTask = keyof typeof MUTQIN_MODEL_ROUTES;
+
+export function getModelsForTask(task: MutqinModelTask): readonly string[] {
+    return MUTQIN_MODEL_ROUTES[task];
+}
 
 export type ModelType = typeof AI_MODELS[keyof typeof AI_MODELS];
 
 // Model display names for UI transparency
 export const MODEL_DISPLAY_NAMES: Record<string, string> = {
     'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite',
-    'gemini-3.5-flash': 'Gemini 3.5 Flash',
-    'gemini-3-flash': 'Gemini 3 Flash',
     'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
-    'gemini-3.6-flash': 'Gemini 3.6 Flash',
+    'gemini-3.5-flash':      'Gemini 3.5 Flash',
+    'gemini-3.6-flash':      'Gemini 3.6 Flash',
+    'gemini-3-flash':        'Gemini 3 Flash',
+    'gemini-2.5-flash':      'Gemini 2.5 Flash',
+    'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+    'gemini-2.5-flash-native-audio-preview-12-2025': 'Gemini 2.5 Flash Native Audio',
+    'gemini-3-flash-live': 'Gemini 3 Flash Live',
+    'gemini-2.5-flash-tts': 'Gemini 2.5 Flash TTS',
+    'gemini-3.1-flash-tts': 'Gemini 3.1 Flash TTS',
+    'gemini-embedding-001': 'Gemini Embedding 1',
+    'gemini-embedding-2-preview': 'Gemini Embedding 2',
 };
 
 // ============================================
@@ -135,7 +194,7 @@ async function logRateLimitToSupabase(model: ModelType, durationMs: number): Pro
  * Get AI client instance
  */
 function getAIClient(): GoogleGenerativeAI {
-    const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    const apiKey = getActiveGeminiApiKey();
     if (!apiKey) {
         throw new Error('Gemini API key not found');
     }

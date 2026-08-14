@@ -1,13 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AI_MODELS } from './ai-models';
+import { AI_MODELS, getModelsForTask } from './ai-models';
+import { getActiveGeminiApiKey } from './gemini-api-key';
 
 /**
  * Lazy getter for GoogleGenerativeAI client instance
  */
 export function getGeminiClient(): GoogleGenerativeAI {
-    const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    const apiKey = getActiveGeminiApiKey();
     if (!apiKey) {
         throw new Error('EXPO_PUBLIC_GEMINI_API_KEY environment variable is not defined.');
+    }
+    if (/^bearer\s|^ya29\./i.test(apiKey)) {
+        throw new Error('Invalid Gemini API key. OAuth access tokens cannot be used as a Gemini API key.');
     }
     return new GoogleGenerativeAI(apiKey);
 }
@@ -71,13 +75,10 @@ export async function checkRecitation(
 ): Promise<RecitationAssessment> {
     try {
         const genAI = getGeminiClient();
-        const modelNames = [
-            AI_MODELS.PRIMARY_AUDITOR,   // 'gemini-3.5-flash'
-            AI_MODELS.PLAN_ARCHITECT,    // 'gemini-3.5-flash-lite'
-            AI_MODELS.SECONDARY_AUDITOR, // 'gemini-3-flash'
-            AI_MODELS.RANDOM_TESTER,     // 'gemini-3.1-flash-lite'
-            'gemini-3.6-flash',
-        ];
+        // Priority order based on actual rate limits:
+        // gemini-3.5-flash-lite / gemini-3.1-flash-lite : 15 RPM, 500 RPD  ← use first
+        // gemini-3.6-flash / gemini-3.5-flash / gemini-3-flash : 5 RPM, 20 RPD  ← last resort
+        const modelNames = [...getModelsForTask('detailedRecitation')];
         
         const HYBRID_SYSTEM_PROMPT = `You are an expert Quran Tajweed examiner with deep knowledge of Hafs recitation (حفص عن عاصم).
 

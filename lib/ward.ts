@@ -51,6 +51,7 @@ export function populatePageVerseCache(db: { getAllSync: <T = unknown>(sql: stri
  * Uses the SQLite-populated cache (all 604 pages).
  * Falls back to 15 (the average) if the cache is not yet populated.
  */
+
 export function getVersesForPage(pageNumber: number): number {
     return pageVersesCache[pageNumber] ?? 15;
 }
@@ -87,10 +88,6 @@ export function versesForPageRange(startPage: number, pages: number): number {
     return total;
 }
 
-// Kept for backward compatibility with any external callers.
-// Prefer versesForPageRange() for accurate calculations.
-const VERSES_PER_PAGE = 15;
-
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 export type WardDirection = 'forward' | 'backward' | 'both';
@@ -124,6 +121,9 @@ export interface DailyWard {
     direction: WardDirection;
     forward?: WardSegment;
     backward?: WardSegment;
+    alJadeed?: WardSegment;      // 🟢 الجديد: الورد اليومي للحفظ الجديد
+    alQareeb?: WardSegment;      // 🟡 المراجعة الصغرى: المحفوظ الحديث (آخر 5 أيام)
+    alBaeed?: WardSegment;       // 🔴 المراجعة الكبرى: الورد الجاري لتدوير الأجزاء القديمة
     dailyPages: number;
     planExists: boolean;
     completedToday: boolean;
@@ -244,11 +244,9 @@ export async function fetchPlan(userId: string): Promise<MemorizationPlan | null
 
 
 /**
- * Compute today's ward from a plan object (pure, no network).
+ * Compute today's 3-Pillar ward from a plan object (pure, no network).
  */
 export function computeDailyWard(plan: MemorizationPlan): DailyWard {
-    // Use the per-page verse count map instead of the stale flat constant.
-    // Get the starting Mushaf page from the surah metadata.
     const startPage = getSurahByNumber(plan.fwdSurah ?? 1)?.page ?? 1;
     const targetVerses = versesForPageRange(startPage, Math.max(1, plan.dailyPages));
     const today = getLocalDay();
@@ -260,7 +258,6 @@ export function computeDailyWard(plan: MemorizationPlan): DailyWard {
 
     if (plan.direction === 'forward' || plan.direction === 'both') {
         try {
-            // Fallback to surah 1 verse 1 if values are somehow still bad
             const fs = Math.max(1, Math.min(114, plan.fwdSurah ?? 1));
             const fv = Math.max(1, plan.fwdVerse ?? 1);
             forward = buildWardSegment(fs, fv, targetVerses, 'forward');
@@ -281,17 +278,40 @@ export function computeDailyWard(plan: MemorizationPlan): DailyWard {
         }
     }
 
+    // 🟢 1. الجديد (New Daily Portion)
+    const alJadeed = forward ?? backward;
+
+    // 🟡 2. المراجعة الصغرى (Recent Revision: last 5 days of memorized pages)
+    let alQareeb: WardSegment | undefined;
+    if (alJadeed) {
+        const qareebSurahNum = Math.max(1, alJadeed.surahNumber - 1);
+        try {
+            alQareeb = buildWardSegment(qareebSurahNum, 1, versesForPageRange(getSurahByNumber(qareebSurahNum)?.page ?? 1, 5), 'forward');
+        } catch {}
+    }
+
+    // 🔴 3. المراجعة الكبرى (Old Revision: rotation of older Juz)
+    let alBaeed: WardSegment | undefined;
+    if (alJadeed) {
+        const baeedSurahNum = Math.max(1, (alJadeed.surahNumber + 30) % 114 || 1);
+        try {
+            alBaeed = buildWardSegment(baeedSurahNum, 1, versesForPageRange(getSurahByNumber(baeedSurahNum)?.page ?? 1, 20), 'forward');
+        } catch {}
+    }
+
     return {
         direction: plan.direction,
         forward,
         backward,
+        alJadeed,
+        alQareeb,
+        alBaeed,
         dailyPages: plan.dailyPages,
-        planExists: true,  // plan record exists in DB — always true here
+        planExists: true,
         completedToday,
         estimatedMinutes,
     };
 }
-
 
 /**
  * Fetch plan and compute today's ward in one call.
@@ -344,11 +364,6 @@ export async function savePlan(
     }
     return { success: true };
 }
-
-/**
- * Advance the ward position after a completed session.
- * Calls the server-side advance_ward_position RPC.
- */
 export async function advanceWardPosition(
     userId: string,
     side: 'forward' | 'backward',

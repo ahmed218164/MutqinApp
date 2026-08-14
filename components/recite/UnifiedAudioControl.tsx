@@ -101,6 +101,9 @@ export interface UnifiedAudioControlProps {
     onSheikhClipReady?: (url: string | null) => void;
     selectedReciter?: Reciter;
     onReciterAvatarPress?: () => void;
+    /** Require an explicit reciter choice before audio playback starts. */
+    reciterConfirmed?: boolean;
+    onReciterSelectionRequired?: () => void;
     /** Bottom safe area inset — passed from parent */
     bottomInset?: number;
 }
@@ -170,6 +173,8 @@ function UnifiedAudioControlInner({
     onSheikhClipReady,
     selectedReciter: externalSelectedReciter,
     onReciterAvatarPress,
+    reciterConfirmed = true,
+    onReciterSelectionRequired,
     bottomInset = 0,
 }: UnifiedAudioControlProps) {
 
@@ -241,6 +246,11 @@ function UnifiedAudioControlInner({
         prevModeRef.current = mode;
 
         if (mode === 'listen') {
+            if (!reciterConfirmed) {
+                onReciterSelectionRequired?.();
+                onModeChange('closed');
+                return;
+            }
             if (prevMode === 'record') {
                 configureAudioSession(true).catch(err =>
                     console.warn('[UnifiedAudio] session restore failed:', err)

@@ -1,0 +1,29 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.mutqin.liveaudiostream'
+version = '1.0.0'
+
+android {
+  namespace "com.mutqin.liveaudiostream"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+
+  compileOptions {
+    targetCompatibility JavaVersion.VERSION_17
+    sourceCompatibility JavaVersion.VERSION_17
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation 'androidx.core:core-ktx:1.15.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
+}

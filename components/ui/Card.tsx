@@ -21,6 +21,8 @@ interface CardProps extends ViewProps {
     style?: StyleProp<ViewStyle>;
     variant?: 'default' | 'gradient' | 'outlined' | 'glass' | 'glassDark';
     animated?: boolean;
+    /** Native blur is costly in long lists; opt in only for one-off hero cards. */
+    blurred?: boolean;
     delay?: number; // stagger delay for list items
 }
 
@@ -31,7 +33,8 @@ export default function Card({
     onPress,
     style,
     variant = 'default',
-    animated = true,
+    animated = false,
+    blurred = false,
     delay = 0,
     ...props
 }: CardProps) {
@@ -45,10 +48,11 @@ export default function Card({
 
     React.useEffect(() => {
         if (animated) {
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 fadeAnim.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) });
                 translateY.value = withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) });
             }, delay);
+            return () => clearTimeout(timer);
         }
 
         // Removed the infinite breathing glow pulse here for massive performance improvements.
@@ -120,7 +124,7 @@ export default function Card({
 
     const contentJsx = (
         <>
-            {isGlass && glassConfig?.blurProps && Platform.OS !== 'android' ? (
+            {blurred && isGlass && glassConfig?.blurProps && Platform.OS !== 'android' ? (
                 <BlurView
                     intensity={glassConfig.blurProps.intensity}
                     tint={glassConfig.blurProps.tint}

@@ -1,0 +1,11 @@
+{
+  "name": "live-audio-stream",
+  "version": "1.0.0",
+  "description": "Expo Native Module for real-time 16kHz 16-bit Mono PCM audio streaming to Gemini Multimodal Live API",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "keywords": ["expo", "audio", "pcm", "streaming", "gemini-live"],
+  "author": "MutqinApp",
+  "license": "MIT"
+}

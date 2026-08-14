@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Mic, MicOff, Volume2, X, Sparkles, Radio } from 'lucide-react-native';
+import { Mic, MicOff, Volume2, X, Sparkles, Radio, Square, Activity } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -28,19 +31,26 @@ interface Props {
     visible: boolean;
     onClose: () => void;
     surahName?: string;
+    surahNumber?: number;
 }
 
-export default function LiveMuaalemModal({ visible, onClose, surahName }: Props) {
+export default function LiveMuaalemModal({ visible, onClose, surahName, surahNumber }: Props) {
+    const router = useRouter();
     const [sessionState, setSessionState] = React.useState<LiveSessionState>({
         isConnected: false,
         isListening: false,
         isSpeaking: false,
+        isLiveStreamMode: false,
         statusMessage: 'جاهز لبدء جلسة التسميع الصوتية المباشرة',
         lastTranscript: '',
         tajweedFeedback: null,
+        audioLevel: 0,
     });
 
     const sessionRef = React.useRef<LiveMuaalemSession | null>(null);
+    const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    const [isRecording, setIsRecording] = React.useState(false);
+    const [isReviewing, setIsReviewing] = React.useState(false);
     const pulseAnim = useSharedValue(1);
 
     React.useEffect(() => {
@@ -56,30 +66,114 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
         }
     }, [visible]);
 
+    // Animate visualizer based on audioLevel when active
+    React.useEffect(() => {
+        if (sessionState.audioLevel > 0) {
+            const scale = 1 + sessionState.audioLevel * 0.4;
+            pulseAnim.value = withTiming(scale, { duration: 100 });
+        }
+    }, [sessionState.audioLevel]);
+
     const pulseStyle = useAnimatedStyle(() => ({
         transform: [{ scale: pulseAnim.value }],
     }));
 
-    const handleStartSession = () => {
+    const handleStartSession = async () => {
         lightImpact();
         if (!sessionRef.current) {
             sessionRef.current = new LiveMuaalemSession((newState) => {
                 setSessionState(newState);
             });
         }
-        sessionRef.current.startSession(surahName);
+
+        try {
+            const permission = await requestRecordingPermissionsAsync();
+            if (!permission.granted) {
+                setSessionState((current) => ({
+                    ...current,
+                    statusMessage: 'نحتاج إلى إذن الميكروفون لبدء التسميع.',
+                }));
+                return;
+            }
+
+            await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
+            // Start Live Muaalem Session (detects native PCM stream vs HTTP Fallback)
+            await sessionRef.current.startSession(surahName);
+
+            const isNative = sessionRef.current.isNativeStreamSupported();
+            if (!isNative) {
+                // Prepare fallback expo-audio recorder
+                await audioRecorder.prepareToRecordAsync();
+                audioRecorder.record();
+            }
+
+            setIsRecording(true);
+        } catch (error) {
+            console.warn('[Live Muaalem] Session start failed:', error);
+            setSessionState((current) => ({
+                ...current,
+                statusMessage: 'تعذّر بدء التسجيل. تأكد من إذن الميكروفون ثم حاول مجدداً.',
+            }));
+        }
     };
 
-    const handleStopSession = () => {
+    const handleStopSession = async () => {
         successHaptic();
-        if (sessionRef.current) {
-            sessionRef.current.stopSession();
+        if (!isRecording) return;
+
+        try {
+            setIsRecording(false);
+            const isNative = sessionRef.current?.isNativeStreamSupported();
+
+            if (isNative && sessionState.isLiveStreamMode) {
+                // In Live PCM mode, stopSession closes stream gracefully
+                sessionRef.current?.stopSession();
+            } else {
+                // In Fallback mode, complete the audio recording and send to review
+                setIsReviewing(true);
+                await audioRecorder.stop();
+                const uri = audioRecorder.uri;
+                if (!uri || !sessionRef.current) {
+                    setSessionState((current) => ({
+                        ...current,
+                        statusMessage: 'لم يُحفظ مقطع صوتي صالح. جرّب التسجيل مرة أخرى.',
+                    }));
+                    return;
+                }
+                const audio = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+                await sessionRef.current.reviewRecordedAudio(audio, 'audio/m4a', surahName);
+            }
+        } catch (error) {
+            console.warn('[Live Muaalem] Recording review/stop failed:', error);
+            setSessionState((current) => ({
+                ...current,
+                statusMessage: 'تعذّر تحليل المقطع. يمكنك الانتقال إلى وضع التسميع المتقدم.',
+            }));
+        } finally {
+            setIsReviewing(false);
+        }
+    };
+
+    const handleAdvancedRecitation = () => {
+        handleClose();
+        if (surahNumber) {
+            router.push({
+                pathname: '/recite',
+                params: { surahNumber: surahNumber.toString(), surahName: surahName ?? '' },
+            });
+        } else {
+            router.push('/free-recite');
         }
     };
 
     const handleClose = () => {
         if (sessionRef.current) {
             sessionRef.current.stopSession();
+        }
+        if (isRecording) {
+            audioRecorder.stop().catch(() => {});
+            setIsRecording(false);
         }
         onClose();
     };
@@ -99,9 +193,17 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
                     {/* Header */}
                     <View style={styles.header}>
                         <View style={styles.badgeRow}>
-                            <View style={styles.liveTag}>
-                                <Radio color="#10b981" size={14} />
-                                <Text style={styles.liveTagText}>جلسة حية بدون حدود (Live API)</Text>
+                            <View style={[styles.liveTag, sessionState.isLiveStreamMode ? styles.liveTagStreaming : null]}>
+                                {sessionState.isLiveStreamMode ? (
+                                    <Activity color="#10b981" size={14} />
+                                ) : (
+                                    <Radio color="#10b981" size={14} />
+                                )}
+                                <Text style={styles.liveTagText}>
+                                    {sessionState.isLiveStreamMode
+                                        ? 'بث صوتي خام فوري (Live PCM)'
+                                        : 'المعلم المباشر الذكي (Gemini Live)'}
+                                </Text>
                             </View>
                         </View>
                         <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
@@ -117,21 +219,34 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
 
                         {/* Animated Visualizer Circle */}
                         <View style={styles.visualizerContainer}>
-                            <Animated.View style={[styles.pulseCircle, pulseStyle]} />
+                            <Animated.View
+                                style={[
+                                    styles.pulseCircle,
+                                    pulseStyle,
+                                    sessionState.isSpeaking
+                                        ? styles.pulseSpeaking
+                                        : sessionState.audioLevel > 0.1
+                                        ? styles.pulseActive
+                                        : null,
+                                ]}
+                            />
                             <TouchableOpacity
                                 style={styles.micCircle}
-                                onPress={sessionState.isConnected ? handleStopSession : handleStartSession}
+                                onPress={isRecording ? handleStopSession : handleStartSession}
+                                disabled={isReviewing}
                             >
                                 <LinearGradient
-                                    colors={sessionState.isConnected ? ['#10b981', '#059669'] : ['#d97706', '#b45309']}
+                                    colors={isRecording ? ['#ef4444', '#dc2626'] : ['#10b981', '#059669']}
                                     style={styles.micGradient}
                                 >
-                                    {sessionState.isSpeaking ? (
+                                    {isReviewing ? (
+                                        <ActivityIndicator color="#ffffff" size="large" />
+                                    ) : sessionState.isSpeaking ? (
                                         <Volume2 color="#ffffff" size={40} />
-                                    ) : sessionState.isConnected ? (
-                                        <Mic color="#ffffff" size={40} />
+                                    ) : isRecording ? (
+                                        <Square color="#ffffff" size={34} fill="#ffffff" />
                                     ) : (
-                                        <Radio color="#ffffff" size={40} />
+                                        <Mic color="#ffffff" size={40} />
                                     )}
                                 </LinearGradient>
                             </TouchableOpacity>
@@ -139,6 +254,15 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
 
                         {/* Status Message */}
                         <Text style={styles.statusText}>{sessionState.statusMessage}</Text>
+
+                        <View style={styles.howItWorks}>
+                            <Text style={styles.howItWorksTitle}>كيف تعمل الجلسة؟</Text>
+                            <Text style={styles.howItWorksText}>
+                                {sessionState.isLiveStreamMode
+                                    ? 'يتم بث صوتك خاماً 16kHz PCM مباشرة إلى المعلم الذكي مع تلقي التوجيهات الفورية أثناء التلاوة.'
+                                    : 'سجّل تلاوتك ثم اضغط إنهاء لتحصل على تحليل تجويدي فوري للمخارج والمدود والوقف.'}
+                            </Text>
+                        </View>
 
                         {/* Feedback Card */}
                         {sessionState.tajweedFeedback ? (
@@ -153,7 +277,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
 
                         {/* Action Buttons */}
                         <View style={styles.actionContainer}>
-                            {!sessionState.isConnected ? (
+                            {!isRecording ? (
                                 <TouchableOpacity style={styles.startBtn} onPress={handleStartSession}>
                                     <LinearGradient
                                         colors={['#10b981', '#059669']}
@@ -174,6 +298,9 @@ export default function LiveMuaalemModal({ visible, onClose, surahName }: Props)
                                     </LinearGradient>
                                 </TouchableOpacity>
                             )}
+                            <TouchableOpacity style={styles.advancedBtn} onPress={handleAdvancedRecitation}>
+                                <Text style={styles.advancedBtnText}>فتح وضع التسميع المتقدم</Text>
+                            </TouchableOpacity>
                         </View>
                     </ScrollView>
                 </View>
@@ -215,6 +342,10 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#10b981',
         gap: 6,
+    },
+    liveTagStreaming: {
+        backgroundColor: 'rgba(16, 185, 129, 0.35)',
+        borderColor: '#34d399',
     },
     liveTagText: {
         color: '#10b981',
@@ -259,6 +390,12 @@ const styles = StyleSheet.create({
         height: 130,
         borderRadius: 65,
         backgroundColor: 'rgba(16, 185, 129, 0.25)',
+    },
+    pulseActive: {
+        backgroundColor: 'rgba(16, 185, 129, 0.45)',
+    },
+    pulseSpeaking: {
+        backgroundColor: 'rgba(245, 158, 11, 0.35)',
     },
     micCircle: {
         width: 100,
@@ -309,6 +446,7 @@ const styles = StyleSheet.create({
     actionContainer: {
         width: '100%',
         marginTop: Spacing.lg,
+        gap: Spacing.sm,
     },
     startBtn: {
         borderRadius: BorderRadius.lg,
@@ -328,6 +466,44 @@ const styles = StyleSheet.create({
     btnText: {
         color: '#ffffff',
         fontSize: 16,
+        fontFamily: Typography.fontFamily.arabicBold,
+    },
+    howItWorks: {
+        width: '100%',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginTop: Spacing.sm,
+    },
+    howItWorksTitle: {
+        color: Colors.emerald[200],
+        fontSize: Typography.fontSize.sm,
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
+    howItWorksText: {
+        color: Colors.neutral[300],
+        fontSize: Typography.fontSize.sm,
+        fontFamily: Typography.fontFamily.arabic,
+        lineHeight: 21,
+        marginTop: 4,
+        textAlign: 'right',
+        writingDirection: 'rtl',
+    },
+    advancedBtn: {
+        alignItems: 'center',
+        paddingVertical: Spacing.md,
+        borderWidth: 1,
+        borderColor: 'rgba(251,191,36,0.45)',
+        borderRadius: BorderRadius.lg,
+        backgroundColor: 'rgba(251,191,36,0.08)',
+    },
+    advancedBtnText: {
+        color: Colors.gold[300],
+        fontSize: Typography.fontSize.sm,
         fontFamily: Typography.fontFamily.arabicBold,
     },
 });

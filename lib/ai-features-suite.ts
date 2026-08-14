@@ -102,9 +102,9 @@ export async function explainAsbabAlNuzulGrounded(
         console.log(`[AI Suite] Fetching Grounded Asbab Al-Nuzul for ${surahName} Ayah ${ayahNumber}...`);
         const ai = getGeminiClient();
 
-        // Use Gemini Flash with Search Grounding
+        // Text-only Tafseer — use high-RPD lite model (15 RPM / 500 RPD)
         const model = ai.getGenerativeModel({
-            model: 'gemini-3.5-flash',
+            model: 'gemini-3.5-flash-lite',
             generationConfig: { responseMimeType: 'application/json' },
         });
 

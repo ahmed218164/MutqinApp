@@ -74,7 +74,7 @@ function MushafPagerInner({
     const pagerRef = React.useRef<PagerView>(null);
 
     // Page indicator fade state
-    const indicatorOpacity = useSharedValue(0);
+    const indicatorOpacity = useSharedValue(1);
     const indicatorStyle = useAnimatedStyle(() => ({ opacity: indicatorOpacity.value }));
 
     const pages = React.useMemo(
@@ -272,16 +272,19 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 12,
         alignSelf: 'center',
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.xs,
+        backgroundColor: 'rgba(2, 44, 34, 0.88)',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.full,
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.35)',
     },
     pageIndicatorText: {
         color: Colors.text.inverse,
-        fontSize: Typography.fontSize.xs,
+        fontSize: Typography.fontSize.sm,
         fontWeight: '600' as const,
-        letterSpacing: 0.3,
+        textAlign: 'center',
+        writingDirection: 'rtl',
     },
     // ── Preload strip: hidden images to pre-warm native image decoder ───────
     preloadStrip: {
@@ -303,8 +306,8 @@ const styles = StyleSheet.create({
         top: 0,
         bottom: 0,
         right: 0,
-        width: 6,
-        backgroundColor: 'transparent',
+        width: 4,
+        backgroundColor: 'rgba(120, 83, 44, 0.10)',
         shadowColor: '#000',
         shadowOffset: { width: -4, height: 0 },
         shadowOpacity: 0.15,
