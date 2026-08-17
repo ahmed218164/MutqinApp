@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     View, Text, TextInput, StyleSheet, FlatList,
 ActivityIndicator, TouchableOpacity,
-    Modal, ScrollView, Share, Alert, Clipboard, Platform,
+    Modal, ScrollView, Share, Clipboard, Platform,
 } from 'react-native';
 import Animated, {
     FadeIn, FadeInDown, useSharedValue, withTiming, useAnimatedStyle,
@@ -36,6 +36,7 @@ import { useAyatDB } from '../lib/SQLiteProvider';
 import { searchAyat, countOccurrences, SearchOptions } from '../lib/sqlite-db';
 import { SURAHS, getSurahByNumber } from '../constants/surahs';
 import { performSemanticQuranSearch } from '../lib/ai-features-suite';
+import { toast } from '../components/ui/Toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Arabic helpers
@@ -222,7 +223,7 @@ function FilterModal({ visible, suraFilter, juzFilter, onApply, onClose }: Filte
                             onPress={() => { onApply(localSura, localJuz); onClose(); }}
                         >
                             <LinearGradient
-                                colors={['#059669', '#047857']}
+                                colors={[Colors.emerald[600], Colors.emerald[700]]}
                                 style={filterStyles.applyGrad}
                             >
                                 <Text style={filterStyles.applyText}>تطبيق</Text>
@@ -409,7 +410,7 @@ export default function SearchScreen() {
     function handleCopy() {
         const lines = results.map(r => `[${r.surahName}: ${r.aya}] ${r.text}`).join('\n');
         Clipboard.setString(lines);
-        Alert.alert('✅ تم النسخ', `تم نسخ ${results.length} آية`);
+        toast.success(`تم نسخ ${results.length} آية`);
     }
 
     const hasFilters = suraFilter !== null || juzFilter !== null;
@@ -719,7 +720,7 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.07)',
         gap: Spacing.xs,
         // subtle glow on bottom border
-        shadowColor: '#10b981',
+        shadowColor: Colors.emerald[500],
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06,
         shadowRadius: 4,
@@ -759,7 +760,7 @@ const styles = StyleSheet.create({
     },
     hitsText: {
         fontSize: 10,
-        color: '#fbbf24',
+        color: Colors.gold[400],
         fontWeight: '700',
     },
     pageBadge: {
@@ -775,7 +776,7 @@ const styles = StyleSheet.create({
     },
     highlight: {
         backgroundColor: 'rgba(16,185,129,0.22)',
-        color: '#6ee7b7',
+        color: Colors.emerald[300],
         fontWeight: '700',
         borderRadius: 3,
     },

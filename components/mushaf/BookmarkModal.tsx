@@ -6,11 +6,11 @@ import {
     Modal,
     TouchableOpacity,
     TextInput,
-    Alert,
 } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { X, Bookmark as BookmarkIcon } from 'lucide-react-native';
 import { TAG_COLORS, addBookmark } from '../../lib/bookmarks';
+import { toast } from '../ui/Toast';
 
 interface BookmarkModalProps {
     visible: boolean;
@@ -48,16 +48,16 @@ export default function BookmarkModal({
             );
 
             if (result.success) {
-                Alert.alert('Success', 'Bookmark added successfully!');
+                toast.success('تمت إضافة الإشارة المرجعية بنجاح');
                 onSuccess();
                 onClose();
                 setNote('');
                 setSelectedColor('gold');
             } else {
-                Alert.alert('Error', result.error || 'Failed to add bookmark');
+                toast.error(result.error || 'فشل إضافة الإشارة المرجعية');
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to add bookmark');
+            toast.error('فشل إضافة الإشارة المرجعية');
         } finally {
             setSaving(false);
         }

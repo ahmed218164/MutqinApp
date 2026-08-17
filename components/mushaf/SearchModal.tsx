@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     filterLabel: {
         fontSize: Typography.fontSize.xs,
         color: Colors.text.tertiary,
-        marginLeft: Spacing.lg,
+        marginEnd: Spacing.lg,
         marginTop: Spacing.xs,
         fontWeight: '600',
     },
@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
-        marginRight: Spacing.sm,
+        marginStart: Spacing.sm,
     },
     chipActive: {
         backgroundColor: 'rgba(234,179,8,0.15)',

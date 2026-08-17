@@ -182,10 +182,12 @@ check(
   'WCAG AA Color Contrast',
   () => {
     const content = fs.readFileSync('constants/theme.ts', 'utf8');
-    return content.includes("400: '#64748b'") &&
-           content.includes('Improved contrast');
+    // neutral[400] must be a distinct, lighter step than neutral[500]
+    // (previously both were '#64748b', which collapsed the ramp).
+    return content.includes("400: '#94a3b8'") &&
+           content.includes("500: '#64748b'");
   },
-  'constants/theme.ts should have improved neutral[400] color'
+  'constants/theme.ts should have a distinct lighter neutral[400] color'
 );
 
 // Check 15: NetworkProvider in root layout

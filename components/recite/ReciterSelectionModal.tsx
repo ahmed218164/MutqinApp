@@ -108,7 +108,7 @@ const reciterItemStyles = StyleSheet.create({
         backgroundColor: Colors.emerald[400],
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: Spacing.md,
+        marginEnd: Spacing.md,
     },
 });
 

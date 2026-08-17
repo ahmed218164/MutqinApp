@@ -27,7 +27,7 @@ import { Colors } from '../../constants/theme';
 const SANCTUARY = {
     bg: '#161B24',
     bgLight: '#FFFFFF',
-    text: { primary: '#E8E6E1', secondary: '#6B7A8D', primaryLight: '#1A1A2E', secondaryLight: '#64748B' },
+    text: { primary: '#E8E6E1', secondary: '#6B7A8D', primaryLight: '#1A1A2E', secondaryLight: Colors.neutral[500] },
     border: 'rgba(255,255,255,0.06)',
     borderLight: 'rgba(0,0,0,0.06)',
     dragPill: '#4B5563',
@@ -48,18 +48,8 @@ interface PlaybackScopeSheetProps {
     onScopeSelect: (scope: PlaybackScope) => void;
 }
 
-// ── Juz page boundaries (standard Mushaf) ─────────────────────────────────────
-
-const JUZ_PAGES: number[] = [
-    1,22,42,62,82,102,121,142,162,182,
-    201,222,242,262,282,302,322,342,362,382,
-    402,422,442,462,482,502,522,542,562,582,
-];
-
-function getJuzEndPage(juz: number): number {
-    if (juz >= 30) return 604;
-    return JUZ_PAGES[juz] - 1; // End page is the page before the next juz starts
-}
+// ── Juz boundaries — shared via constants/juz ─────────────────────────────────
+import { JUZ_PAGES, getJuzEndPage } from '../../constants/juz';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 

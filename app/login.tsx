@@ -146,16 +146,15 @@ export default function LoginScreen() {
 
     return (
         <LinearGradient
-            colors={['#042f2e', '#0d534f', '#115e59', '#042f2e']}
+            colors={[...Colors.gradients.header, Colors.gradients.header[0]]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradient}
         >
             <SafeAreaView style={styles.container}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={styles.content}
-                    enabled={Platform.OS === 'ios'}
                 >
                     {/* Decorative circles */}
                     <View style={styles.decorCircle1} />
@@ -398,7 +397,7 @@ const styles = StyleSheet.create({
     inputContainerFocused: {
         backgroundColor: 'rgba(52, 211, 153, 0.06)',
     },
-    inputIcon: { marginLeft: Spacing.md },  // RTL: icon on right side
+    inputIcon: { marginEnd: Spacing.md },  // RTL: icon on right side
     input: {
         flex: 1,
         paddingVertical: Spacing.lg,

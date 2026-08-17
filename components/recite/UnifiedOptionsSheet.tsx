@@ -28,11 +28,11 @@ import { Colors } from '../../constants/theme';
 const SANCTUARY = {
     bg: '#161B24',
     bgLight: '#FFFFFF',
-    text: { primary: '#E8E6E1', secondary: '#6B7A8D', primaryLight: '#1A1A2E', secondaryLight: '#64748B' },
+    text: { primary: '#E8E6E1', secondary: '#6B7A8D', primaryLight: '#1A1A2E', secondaryLight: Colors.neutral[500] },
     border: 'rgba(255,255,255,0.06)',
     borderLight: 'rgba(0,0,0,0.06)',
     dragPill: '#4B5563',
-    toggleOn: '#10B981',
+    toggleOn: Colors.emerald[500],
     toggleOff: 'rgba(255,255,255,0.08)',
     toggleOffLight: 'rgba(0,0,0,0.06)',
 } as const;

@@ -6,7 +6,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     ScrollView,
-    Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
@@ -21,6 +20,7 @@ import {
     PlacementTestQuestion
 } from '../lib/mutashabihat-engine';
 import { ChevronLeft, CheckCircle2, XCircle } from 'lucide-react-native';
+import { toast } from '../components/ui/Toast';
 
 export default function PlacementTestScreen() {
     const router = useRouter();
@@ -91,10 +91,7 @@ export default function PlacementTestScreen() {
 
             if (error) throw error;
 
-            Alert.alert(
-                'تمت الإضافة لقائمة المراجعة',
-                `تمت إضافة ${failedAyahs.length} آية إلى جدول المراجعة المتباعدة.`
-            );
+            toast.success(`تمت إضافة ${failedAyahs.length} آية إلى جدول المراجعة المتباعدة.`);
         } catch (error) {
             console.error('Error injecting failed ayahs:', error);
         }

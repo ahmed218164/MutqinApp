@@ -7,14 +7,12 @@ import {
     ScrollView,
     TouchableOpacity,
     Dimensions,
-    Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Settings as SettingsIcon, TrendingUp, TrendingDown, BookOpen, Flame, BarChart3, Target, Award } from 'lucide-react-native';
+import { Settings as SettingsIcon, TrendingUp, TrendingDown, BookOpen, Flame, BarChart3, Target, Award, GraduationCap } from 'lucide-react-native';
 import { LineChart, ContributionGraph } from 'react-native-chart-kit';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/theme';
-import { useThemeColors } from '../../constants/dynamicTheme';
 import Card from '../../components/ui/Card';
 import ModernBackground from '../../components/ui/ModernBackground';
 import { useAuth } from '../../lib/auth';
@@ -29,6 +27,7 @@ import {
     WeeklyReport,
 } from '../../lib/weekly-report';
 import { getLocalDay } from '../../lib/date-utils';
+import { toast } from '../../components/ui/Toast';
 
 interface DailyLog {
     date: string;
@@ -39,6 +38,7 @@ export default function ProfileScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState(false);
     const [activityData, setActivityData] = React.useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
     const [contributionData, setContributionData] = React.useState<{ date: string; count: number }[]>([]);
     const [totalPages, setTotalPages] = React.useState(0);
@@ -66,6 +66,7 @@ export default function ProfileScreen() {
         if (!user) return;
 
         setLoading(true);
+        setLoadError(false);
         try {
             // ── Run two parallel queries instead of four sequential ones ─────────
             // Query 1: ALL daily_logs (full history for totals + score avg)
@@ -164,6 +165,7 @@ export default function ProfileScreen() {
             setAchievements(userAchievements);
         } catch (error) {
             console.error('Error fetching analytics:', error);
+            setLoadError(true);
         } finally {
             setLoading(false);
         }
@@ -185,7 +187,7 @@ export default function ProfileScreen() {
             );
             setWeeklyReport(report);
             if (forceRegenerate && !report) {
-                Alert.alert('خطأ', 'فشل توليد التقرير. يرجى المحاولة مرة أخرى.');
+                toast.error('فشل توليد التقرير. يرجى المحاولة مرة أخرى.');
             }
         } catch (e) {
             console.error('Error loading weekly report:', e);
@@ -246,16 +248,44 @@ export default function ProfileScreen() {
                             <Text style={styles.subtitle}>{user?.email || ''}</Text>
                         </View>
                     </View>
-                    <TouchableOpacity
-                        style={styles.settingsButton}
-                        onPress={() => router.push('/settings')}
-                    >
-                        <SettingsIcon color={Colors.text.inverse} size={24} />
-                    </TouchableOpacity>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            style={styles.settingsButton}
+                            onPress={() => router.push('/placement-test')}
+                            accessibilityRole="button"
+                            accessibilityLabel="اختبار تحديد المستوى"
+                        >
+                            <GraduationCap color={Colors.text.inverse} size={24} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.settingsButton}
+                            onPress={() => router.push('/settings')}
+                            accessibilityRole="button"
+                            accessibilityLabel="الإعدادات"
+                        >
+                            <SettingsIcon color={Colors.text.inverse} size={24} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                    {loading ? (
+                    {loadError ? (
+                        <View style={styles.errorBox}>
+                            <BarChart3 size={44} color={Colors.gold[400]} />
+                            <Text style={styles.errorTitle}>تعذّر تحميل الإحصائيات</Text>
+                            <Text style={styles.errorMessage}>
+                                تحقق من اتصالك بالإنترنت وحاول مرة أخرى
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.retryButton}
+                                onPress={fetchAnalytics}
+                                accessibilityRole="button"
+                                accessibilityLabel="إعادة المحاولة"
+                            >
+                                <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.3}>إعادة المحاولة</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : loading ? (
                         <>
                             <Card style={styles.chartCard} variant="glass">
                                 <SkeletonLoader width="40%" height={24} style={{ marginBottom: Spacing.lg, alignSelf: 'flex-start' }} />
@@ -379,7 +409,7 @@ export default function ProfileScreen() {
                             <Card style={styles.weeklyCard} variant="glass" animated={true} delay={StaggerDelay * 3}>
                                 <View style={styles.weeklyHeader}>
                                     <BarChart3 color={Colors.emerald[400]} size={22} />
-                                    <Text style={[styles.cardTitle, { marginBottom: 0, marginRight: Spacing.sm }]}>مقارنة أسبوعية</Text>
+                                    <Text style={[styles.cardTitle, { marginBottom: 0, marginStart: Spacing.sm }]}>مقارنة أسبوعية</Text>
                                 </View>
                                 <View style={styles.weeklyBars}>
                                     <View style={styles.weeklyBarContainer}>
@@ -520,11 +550,17 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize['3xl'],
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
         marginBottom: Spacing.xs,
     },
     subtitle: {
         fontSize: Typography.fontSize.base,
         color: Colors.text.tertiary,
+    },
+    headerActions: {
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: Spacing.sm,
     },
     settingsButton: {
         padding: Spacing.sm,
@@ -697,7 +733,7 @@ const styles = StyleSheet.create({
         marginTop: Spacing.sm,
     },
     changeText: {
-        marginRight: Spacing.xs,  // RTL: was marginLeft
+        marginStart: Spacing.xs,  // RTL: was marginLeft
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.semibold,
     },
@@ -727,6 +763,47 @@ const styles = StyleSheet.create({
         fontWeight: Typography.fontWeight.extrabold,
         color: Colors.emerald[950],
         letterSpacing: 0,
+    },
+    // ── Load-error state ──
+    errorBox: {
+        alignItems: 'center',
+        padding: Spacing.xl,
+        marginTop: Spacing.xl,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.25)',
+        backgroundColor: 'rgba(2, 6, 23, 0.6)',
+        gap: Spacing.sm,
+    },
+    errorTitle: {
+        fontSize: Typography.fontSize.lg,
+        fontWeight: Typography.fontWeight.bold,
+        color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'center',
+    },
+    errorMessage: {
+        fontSize: Typography.fontSize.sm,
+        color: Colors.text.tertiary,
+        fontFamily: Typography.fontFamily.arabic,
+        textAlign: 'center',
+        marginBottom: Spacing.sm,
+    },
+    retryButton: {
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.full,
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.35)',
+        minWidth: 140,
+    },
+    retryButtonText: {
+        color: Colors.emerald[300],
+        fontSize: Typography.fontSize.base,
+        fontWeight: '600',
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'center',
     },
 });
 

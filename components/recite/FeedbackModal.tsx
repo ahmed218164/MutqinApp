@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.base,
     },
     savingText: {
-        marginLeft: Spacing.sm,
+        marginEnd: Spacing.sm,
         color: Colors.gold[700],
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.medium,
@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
     omissionCard: {
         backgroundColor: '#fef2f2',
         borderWidth: 2,
-        borderColor: '#ef4444',
+        borderColor: Colors.error,
         borderRadius: BorderRadius.lg,
         padding: Spacing.md,
         marginBottom: Spacing.md,

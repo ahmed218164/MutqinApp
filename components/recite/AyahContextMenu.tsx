@@ -11,7 +11,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     TouchableWithoutFeedback,
-    Alert,
     Share,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -33,6 +32,7 @@ import {
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { lightImpact } from '../../lib/haptics';
+import { toast } from '../ui/Toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -150,11 +150,7 @@ export default function AyahContextMenu({
         if (onTafseer) {
             onTafseer(verseKey);
         } else {
-            Alert.alert(
-                'التفسير',
-                `سيتم إضافة تفسير الآية ${ayahNum} من سورة رقم ${surahNum} في الإصدار القادم.`,
-                [{ text: 'حسناً' }]
-            );
+            toast.info(`سيتم إضافة تفسير الآية ${ayahNum} من سورة رقم ${surahNum} في الإصدار القادم.`);
         }
     };
 
@@ -164,11 +160,7 @@ export default function AyahContextMenu({
         if (onMutashabihat) {
             onMutashabihat(verseKey);
         } else {
-            Alert.alert(
-                'المتشابهات',
-                `سيتم ربط الآية ${ayahNum} من سورة ${surahNum} بمحرّك المتشابهات في الإصدار القادم.`,
-                [{ text: 'حسناً' }]
-            );
+            toast.info(`سيتم ربط الآية ${ayahNum} من سورة ${surahNum} بمحرّك المتشابهات في الإصدار القادم.`);
         }
     };
 
@@ -178,7 +170,7 @@ export default function AyahContextMenu({
         onClose();
         try {
             await Clipboard.setStringAsync(textToCopy);
-            Alert.alert('تم النسخ ✅', 'تم نسخ نص الآية');
+            toast.success('تم نسخ نص الآية');
         } catch {
             // Clipboard write failed — fall back silently
         }
@@ -300,7 +292,7 @@ const styles = StyleSheet.create({
         top: 8,
         alignSelf: 'center',
         left: '50%',
-        marginLeft: -20,
+        marginEnd: -20,
         width: 40,
         height: 4,
         borderRadius: 2,
@@ -316,7 +308,7 @@ const styles = StyleSheet.create({
     },
     closeBtn: {
         padding: Spacing.xs,
-        marginLeft: Spacing.sm,
+        marginEnd: Spacing.sm,
     },
     menuContainer: {
         paddingVertical: Spacing.sm,
@@ -353,6 +345,6 @@ const styles = StyleSheet.create({
     menuDivider: {
         height: 1,
         backgroundColor: 'rgba(255,255,255,0.06)',
-        marginLeft: 52,
+        marginEnd: 52,
     },
 });

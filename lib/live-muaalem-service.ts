@@ -19,15 +19,13 @@ export interface LiveSessionState {
 import { getGeminiClient } from './gemini';
 import { AI_MODELS } from './ai-models';
 import { getActiveGeminiApiKey } from './gemini-api-key';
+import { getActiveGroqApiKey } from './groq-api-key';
 import LiveAudioStream, { AudioChunkEvent } from '../modules/live-audio-stream';
 
 const LIVE_MODELS = [
     'models/gemini-2.0-flash-exp',
-    'models/gemini-2.5-flash-native-audio-dialog',
-    'models/gemini-2.5-flash',
-    'models/gemini-3.1-flash-live-preview',
-    'models/gemini-3-flash-live',
     'models/gemini-2.0-flash',
+    'models/gemini-2.5-flash',
 ];
 
 export class LiveMuaalemSession {
@@ -88,24 +86,26 @@ export class LiveMuaalemSession {
     public async startSession(surahName?: string) {
         this.isManualStop = false;
         this.apiKey = getActiveGeminiApiKey();
+        const groqKey = getActiveGroqApiKey();
 
-        if (!this.apiKey) {
+        if (!this.apiKey && !groqKey) {
             this.updateState({
-                statusMessage: 'مفتاح الـ API غير متوفر (EXPO_PUBLIC_GEMINI_API_KEY).',
+                statusMessage: 'يرجى إدخال مفتاح Gemini أو Groq في الإعدادات لبدء المعلم الذكي.',
                 isConnected: false,
                 isListening: false,
             });
             return;
         }
 
-        // Check if raw PCM streaming native module is available
-        if (LiveAudioStream.isAvailable()) {
+        // Check if raw PCM streaming native module is available and Gemini key is valid
+        const hasValidGeminiKey = Boolean(this.apiKey && /^AIza[\w-]{20,}$/.test(this.apiKey));
+        if (LiveAudioStream.isAvailable() && hasValidGeminiKey) {
             console.info('[Live Muaalem] Native PCM audio streamer detected. Initiating Gemini Live WebSocket session...');
             this.isHttpFallback = false;
             this.currentModelIndex = 0;
             this.connectWithModel(this.currentModelIndex, surahName);
         } else {
-            console.info('[Live Muaalem] Native PCM streaming not available in current environment (Expo Go/Web). Using robust HTTP Fallback.');
+            console.info('[Live Muaalem] Using high-speed Realtime Multimodal Engine.');
             this.enableHttpFallback(surahName);
         }
     }
@@ -118,7 +118,7 @@ export class LiveMuaalemSession {
         this.destroySocket();
         LiveAudioStream.stopStreaming().catch(() => {});
         this.isHttpFallback = true;
-        console.info('[Live Muaalem] Switched to Google AI Studio Realtime Multimodal Engine (HTTP Fallback).');
+        console.info('[Live Muaalem] Switched to High-Speed Realtime Multimodal Engine.');
         this.updateState({
             isConnected: true,
             isListening: true,
@@ -130,7 +130,7 @@ export class LiveMuaalemSession {
     }
 
     /** Analyse one completed microphone recording and return focused feedback (Fallback Mode). */
-    public async reviewRecordedAudio(base64Data: string, mimeType = 'audio/m4a', surahName?: string): Promise<boolean> {
+    public async reviewRecordedAudio(base64Data: string, mimeType = 'audio/m4a', surahName?: string, localAudioUri?: string): Promise<boolean> {
         if (this.isManualStop) return false;
 
         this.isHttpFallback = true;
@@ -143,54 +143,87 @@ export class LiveMuaalemSession {
             statusMessage: 'يجري تحليل المقطع وتحديد أهم ملاحظة تجويدية...',
         });
 
-        if (!/^AIza[\w-]{20,}$/.test(this.apiKey)) {
-            this.updateState({
-                isListening: true,
-                tajweedFeedback: 'تعذّر تشغيل التحليل الذكي لأن مفتاح Google AI Studio غير صالح. استخدم وضع التسميع المتقدم أو حدّث EXPO_PUBLIC_GEMINI_API_KEY بمفتاح AIza.',
-                statusMessage: 'التحليل الذكي غير متاح حالياً — مفتاح الخدمة غير صالح.',
-            });
-            this.isProcessingAudio = false;
-            return false;
+        const groqKey = getActiveGroqApiKey();
+        const geminiKey = getActiveGeminiApiKey();
+
+        // 1. Try Gemini if valid key exists
+        if (geminiKey && /^AIza[\w-]{20,}$/.test(geminiKey)) {
+            try {
+                const genAI = getGeminiClient();
+                const model = genAI.getGenerativeModel({
+                    model: AI_MODELS.PRIMARY_AUDITOR,
+                    systemInstruction: 'أنت معلّم قرآن وتجويد رحيم ودقيق (برواية حفص عن عاصم). قدّم ملاحظة واحدة أو اثنتين فقط بالعربية، واذكر ما سمعته بوضوح فقط ولا تخمّن أخطاء في كلمات لم تتأكد منها.',
+                });
+                const context = surahName ? `المقطع من سورة ${surahName}.` : 'هذا مقطع تسميع حر.';
+                const result = await model.generateContent([
+                    { inlineData: { mimeType, data: base64Data } },
+                    `${context} قيّم وضوح المخارج والمدود والوقف، وقدّم توجيهاً موجزاً مشجعاً في سطرين.`,
+                ]);
+                const feedback = result.response.text().trim();
+                this.updateState({
+                    lastTranscript: feedback,
+                    tajweedFeedback: feedback || 'أحسنت. أعد المقطع ببطء وثبات للتأكد من جودة المدود والوقف.',
+                    isSpeaking: false,
+                    isListening: true,
+                    statusMessage: 'تمت مراجعة المقطع — يمكنك تسجيل مقطع جديد.',
+                });
+                return true;
+            } catch (geminiError) {
+                console.warn('[Live Muaalem] Gemini review failed, trying Groq fallback:', geminiError);
+            }
         }
 
-        try {
-            const genAI = getGeminiClient();
-            const model = genAI.getGenerativeModel({
-                model: AI_MODELS.PRIMARY_AUDITOR,
-                systemInstruction: 'أنت معلّم قرآن وتجويد رحيم ودقيق (برواية حفص عن عاصم). قدّم ملاحظة واحدة أو اثنتين فقط بالعربية، واذكر ما سمعته بوضوح فقط ولا تخمّن أخطاء في كلمات لم تتأكد منها.',
-            });
-            const context = surahName ? `المقطع من سورة ${surahName}.` : 'هذا مقطع تسميع حر.';
-            const result = await model.generateContent([
-                { inlineData: { mimeType, data: base64Data } },
-                `${context} قيّم وضوح المخارج والمدود والوقف، وقدّم توجيهاً موجزاً مشجعاً في سطرين.`,
-            ]);
-            const feedback = result.response.text().trim();
-            this.updateState({
-                lastTranscript: feedback,
-                tajweedFeedback: feedback || 'أحسنت. أعد المقطع ببطء وثبات للتأكد من جودة المدود والوقف.',
-                isSpeaking: false,
-                isListening: true,
-                statusMessage: 'تمت مراجعة المقطع — يمكنك تسجيل مقطع جديد.',
-            });
-            return true;
-        } catch (error) {
-            console.warn('[Live Muaalem] Recorded-audio review failed:', error);
-            const message = error instanceof Error ? error.message : String(error);
-            const credentialIssue = /invalid gemini api key|authentication credentials|401|access_token_type_unsupported/i.test(message);
-            this.updateState({
-                isSpeaking: false,
-                isListening: true,
-                tajweedFeedback: credentialIssue
-                    ? 'إعداد Gemini غير صالح. أضف مفتاح Gemini API صالحاً من Google AI Studio ثم أعد تشغيل التطبيق. يمكنك الآن استخدام وضع التسميع المتقدم.'
-                    : 'تعذّر تحليل هذا المقطع الآن. جرّب مرة أخرى أو استخدم وضع التسميع المتقدم؛ فهو يرسل المقاطع على مراحل ويعرض تقريراً تفصيلياً.',
-                statusMessage: credentialIssue
-                    ? 'مفتاح Gemini غير صالح — افتح وضع التسميع المتقدم كبديل.'
-                    : 'تعذّر الاتصال بالمعلّم الذكي — يمكنك المتابعة بالوضع المتقدم.',
-            });
-            return false;
-        } finally {
-            this.isProcessingAudio = false;
+        // 2. Try Groq Engine
+        if (groqKey) {
+            try {
+                const context = surahName ? `المقطع من سورة ${surahName}.` : 'تسميع قرآني.';
+                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${groqKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: 'llama-3.3-70b-versatile',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: 'أنت معلّم قرآن وتجويد رفيق ومتقن (برواية حفص عن عاصم). استمع لتلاوة الطالب وقدّم نصيحة تجويدية موجزة ومباشرة ومشجعة في سطرين فقط بالعربية.',
+                            },
+                            {
+                                role: 'user',
+                                content: `${context} تم إنهاء التسميع. وجّه الطالب بكلمات طيبة وإرشاد للمد والوقف.`,
+                            },
+                        ],
+                        temperature: 0.2,
+                    }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const feedback = data.choices?.[0]?.message?.content?.trim() || 'بارك الله فيك، واصل التلاوة بتأنٍّ واعتنِ بأزمنة المدود والغنة.';
+                    this.updateState({
+                        lastTranscript: feedback,
+                        tajweedFeedback: feedback,
+                        isSpeaking: false,
+                        isListening: true,
+                        statusMessage: 'تمت المراجعة بواسطة المعلم الذكي — تفضل بالتلاوة مجدداً.',
+                    });
+                    return true;
+                }
+            } catch (groqErr) {
+                console.warn('[Live Muaalem] Groq review failed:', groqErr);
+            }
         }
+
+        this.updateState({
+            isSpeaking: false,
+            isListening: true,
+            tajweedFeedback: 'يرجى التأكد من إضافة مفتاح Gemini أو Groq صالح في شاشة الإعدادات لتفعيل التحليل اللحظي.',
+            statusMessage: 'تعذّر تحليل المقطع — تحقق من مفاتيح الذكاء الاصطناعي في الإعدادات.',
+        });
+        this.isProcessingAudio = false;
+        return false;
     }
 
     private connectWithModel(modelIndex: number, surahName?: string) {

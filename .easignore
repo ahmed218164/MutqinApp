@@ -40,6 +40,10 @@ test-models.js
 verify-production-readiness.js
 switch_cases.txt
 
-# ─── Documentation / plans ───────────────────────────────────────────────────
+# ─── Documentation / plans / backups ──────────────────────────────────────────
 *.md
 implementation_plans/
+backup_mushaf_png/
+.agent/
+.agents/
+.zcode/

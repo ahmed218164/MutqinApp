@@ -74,7 +74,11 @@ export default function GradientButton({
                     end={{ x: 1, y: 1 }}
                     style={[styles.gradient, disabled && styles.disabled]}
                 >
-                    <Text style={[styles.text, textStyle, disabled && styles.disabledText]}>
+                    <Text
+                        style={[styles.text, textStyle, disabled && styles.disabledText]}
+                        maxFontSizeMultiplier={1.3}
+                        allowFontScaling={true}
+                    >
                         {title}
                     </Text>
                 </LinearGradient>

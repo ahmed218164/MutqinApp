@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.lg,
         fontWeight: Typography.fontWeight.bold,
         color: Colors.gold[400],
-        marginLeft: Spacing.sm,
+        marginEnd: Spacing.sm,
     },
     similarity: {
         fontSize: Typography.fontSize.sm,

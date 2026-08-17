@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { Download, Trash2, Check, X, Database } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
+import { toast } from '../ui/Toast';
 import {
     TAFSIR_SOURCES,
     type TafsirSource,
@@ -61,7 +62,7 @@ export default function TafsirDownloadModal({ visible, onClose }: TafsirDownload
             });
             setSourceStatus(s => ({ ...s, [source.id]: true }));
         } catch (e: any) {
-            Alert.alert('خطأ في التنزيل', e?.message ?? 'فشل التنزيل. تحقق من الاتصال بالإنترنت.');
+            toast.error(e?.message ?? 'فشل التنزيل. تحقق من الاتصال بالإنترنت.');
         } finally {
             setDownloading(d => { const n = { ...d }; delete n[source.id]; return n; });
         }

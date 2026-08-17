@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     inputContainerFocused: {
         backgroundColor: 'rgba(52, 211, 153, 0.06)',
     },
-    inputIcon: { marginRight: Spacing.md },
+    inputIcon: { marginStart: Spacing.md },
     input: {
         flex: 1,
         paddingVertical: Spacing.lg,

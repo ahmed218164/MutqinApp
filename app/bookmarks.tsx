@@ -16,6 +16,7 @@ import Card from '../components/ui/Card';
 import { useAuth } from '../lib/auth';
 import { getUserBookmarks, deleteBookmark, Bookmark, TAG_COLORS } from '../lib/bookmarks';
 import EmptyState from '../components/ui/EmptyState';
+import { toast } from '../components/ui/Toast';
 
 // ── FlatList optimisation constants ──────────────────────────────────────────
 // Card padding(20*2) + cardHeader(24 + marginBottom 8) + surahName(20 + mb 4)
@@ -136,7 +137,7 @@ export default function BookmarksScreen() {
                         if (result.success) {
                             setBookmarks(prev => prev.filter(b => b.id !== bookmark.id));
                         } else {
-                            Alert.alert('خطأ', result.error || 'فشل حذف الإشارة المرجعية');
+                            toast.error(result.error || 'فشل حذف الإشارة المرجعية');
                         }
                     },
                 },

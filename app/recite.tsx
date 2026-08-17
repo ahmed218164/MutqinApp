@@ -5,7 +5,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
@@ -50,27 +49,18 @@ import Animated, {
 import { useSurahFetcher } from '../hooks/useSurahFetcher';
 import { useBookmarkManager } from '../hooks/useBookmarkManager';
 import { useRecitationSync } from '../hooks/useRecitationSync';
+// Juz boundaries — shared with MushafPager & PlaybackScopeSheet via constants/juz
+import { JUZ_PAGES, getJuzForPage } from '../constants/juz';
+import { toast } from '../components/ui/Toast';
 
-// ── Juz page boundaries (standard Mushaf) ─────────────────────────────────────
-const JUZ_PAGES: number[] = [
-    1,22,42,62,82,102,121,142,162,182,
-    201,222,242,262,282,302,322,342,362,382,
-    402,422,442,462,482,502,522,542,562,582,
-];
-
-function getJuzForPage(page: number): number {
-    for (let j = JUZ_PAGES.length - 1; j >= 0; j--) {
-        if (page >= JUZ_PAGES[j]) return j + 1;
-    }
-    return 1;
-}
-
-// ── Design Tokens (Sanctuary Theme) ─────────────────────────────────────────
+// ── Reader-scoped palette (Sanctuary) ────────────────────────────────────────
+// Custom ink/parchment tones specific to the reader chrome. Values that match
+// the global design system reference its tokens directly to avoid drift.
 const SANCTUARY = {
     surface: {
-        primary: '#0C0F14',       // deep obsidian
-        primaryLight: '#FDFBF7',  // warm parchment
-        elevated: '#161B24',      // ink
+        primary: '#0C0F14',       // deep obsidian — reader-specific
+        primaryLight: '#FDFBF7',  // warm parchment — reader-specific
+        elevated: '#161B24',      // ink — reader-specific
         elevatedLight: '#FFFFFF',
     },
     header: {
@@ -83,7 +73,7 @@ const SANCTUARY = {
         primary: '#E8E6E1',
         secondary: '#6B7A8D',
         primaryLight: '#1A1A2E',
-        secondaryLight: '#64748B',
+        secondaryLight: StaticColors.neutral[500],
     },
 } as const;
 
@@ -92,7 +82,7 @@ function ReciteScreenInner() {
     const params = useLocalSearchParams();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
-    const { fontSize, theme, toggleTheme } = useSettings();
+    const { fontSize, theme, toggleTheme, setFontSize } = useSettings();
     const Colors = useThemeColors();
     const surahNumber = parseInt(params.surahNumber as string) || 1;
     const surahName = params.surahName as string || 'الفاتحة';
@@ -181,6 +171,12 @@ function ReciteScreenInner() {
     const optionsSheetRef = React.useRef<BottomSheetModal>(null);
     const scopeSheetRef = React.useRef<BottomSheetModal>(null);
     const [currentFontSize, setCurrentFontSize] = React.useState(fontSize || 24);
+
+    // Persist reader font-size changes so they survive app restarts.
+    const handleFontSizeChange = React.useCallback((size: number) => {
+        setCurrentFontSize(size);
+        setFontSize(size);
+    }, [setFontSize]);
 
     // Immersive Mode State (Default to true)
     const [immersive, setImmersive] = React.useState(true);
@@ -298,21 +294,13 @@ function ReciteScreenInner() {
         if (side === 'backward') {
             nextSurahNumber = surahNumber - 1;
             if (nextSurahNumber < 1) {
-                Alert.alert(
-                    '🎉 ما شاء الله!',
-                    'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
-                    [{ text: 'الحمد لله', style: 'default' }]
-                );
+                toast.success('🎉 ما شاء الله! لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.', 6000);
                 return;
             }
         } else {
             nextSurahNumber = surahNumber + 1;
             if (nextSurahNumber > 114) {
-                Alert.alert(
-                    '🎉 ما شاء الله!',
-                    'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
-                    [{ text: 'الحمد لله', style: 'default' }]
-                );
+                toast.success('🎉 ما شاء الله! لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.', 6000);
                 return;
             }
         }
@@ -341,7 +329,7 @@ function ReciteScreenInner() {
     const startRecording = React.useCallback(async () => {
         if (vadRecorder.state.isSessionActive || analyzing) return;
         if (!user) {
-            Alert.alert('خطأ', 'يجب تسجيل الدخول أولاً');
+            toast.error('يجب تسجيل الدخول أولاً');
             return;
         }
 
@@ -366,12 +354,12 @@ function ReciteScreenInner() {
             const aggregatedResult = await vadRecorder.finishSession();
 
             if (!aggregatedResult) {
-                Alert.alert('خطأ', 'لم يتم الحصول على نتائج.');
+                toast.error('لم يتم الحصول على نتائج.');
                 return;
             }
 
             if (aggregatedResult.error) {
-                Alert.alert('خطأ في التحليل', aggregatedResult.error);
+                toast.error(aggregatedResult.error);
                 return;
             }
 
@@ -411,11 +399,7 @@ function ReciteScreenInner() {
                 } else {
                     setTimeout(() => {
                         setModalVisible(false);
-                        Alert.alert(
-                            '🎉 ما شاء الله!',
-                            'لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.',
-                            [{ text: 'الحمد لله', style: 'default' }]
-                        );
+                        toast.success('🎉 ما شاء الله! لقد أتممت حفظ القرآن الكريم كاملاً!\nبارك الله فيك وجعلك من أهل القرآن.', 6000);
                     }, 2500);
                 }
             }
@@ -433,7 +417,7 @@ function ReciteScreenInner() {
             }
         } catch (error: any) {
             console.error('Failed to process recording:', error);
-            Alert.alert('خطأ', 'فشل في تحليل التلاوة. يرجى المحاولة مرة أخرى.');
+            toast.error('فشل في تحليل التلاوة. يرجى المحاولة مرة أخرى.');
         } finally {
             setAnalyzing(false);
             setUploadStep('idle');
@@ -772,7 +756,7 @@ function ReciteScreenInner() {
                             styles.actionBar,
                             {
                                 bottom: Math.max(insets.bottom + (Platform.OS === 'android' ? 16 : 8), 24),
-                                backgroundColor: nightMode ? '#022c22' : '#ffffff',
+                                backgroundColor: nightMode ? StaticColors.emerald[950] : '#ffffff',
                                 borderColor: 'rgba(52, 211, 153, 0.3)',
                                 borderWidth: 1,
                             },
@@ -823,7 +807,7 @@ function ReciteScreenInner() {
                         onStopRecording={stopRecording}
                         analyzing={analyzing}
                         uploadStep={uploadStep}
-                        recordingDuration={vadRecorder.state.elapsedSeconds}
+                        elapsedSecondsShared={vadRecorder.elapsedSecondsShared}
                         meterHistoryShared={vadRecorder.meterHistoryShared}
                         chunksSent={vadRecorder.state.chunksSent}
                         chunksCompleted={vadRecorder.state.chunksCompleted}
@@ -915,7 +899,7 @@ function ReciteScreenInner() {
                 hifzCoverVisible={hifzCoverVisible}
                 onReciterPress={() => reciterSheetRef.current?.present()}
                 onNightModeToggle={toggleTheme}
-                onFontSizeChange={setCurrentFontSize}
+                onFontSizeChange={handleFontSizeChange}
                 onHeatmapToggle={() => setHeatmapVisible(v => !v)}
                 onHifzToggle={() => setHifzCoverVisible(v => !v)}
                 onLiveMuaalemPress={() => setShowLiveModal(true)}

@@ -36,7 +36,7 @@ export const Colors = {
         100: '#f1f5f9',
         200: '#e2e8f0',
         300: '#cbd5e1',
-        400: '#64748b', // Improved contrast ratio: 4.73:1 on neutral[900]
+        400: '#94a3b8', // Slate 400 — lighter step (was duplicated with 500)
         500: '#64748b',
         600: '#475569',
         700: '#334155',
@@ -75,6 +75,8 @@ export const Colors = {
     // Gradients (for 2026 aesthetics)
     gradients: {
         primary: ['#042f2e', '#0f766e', '#14b8a6'] as const, // Deep Emerald -> Teal
+        // Deep emerald header ramp used by login/settings/about headers
+        header: ['#042f2e', '#0d534f', '#115e59'] as const,
         gold: ['#78350f', '#d97706', '#fbbf24'] as const,    // Dark Gold -> Bright Gold
         dark: ['#020617', '#0f172a', '#1e293b'] as const,    // Deep Slate
         mesh: ['#022c22', '#115e59', '#0d9488', '#0f766e', '#042f2e'] as const, // Organic Mesh

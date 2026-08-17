@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react';
-import { Alert } from 'react-native';
+import { } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { updateReviewSchedule } from '../lib/planner';
 import { awardXP, checkAchievements, updateStreak, XP_REWARDS } from '../lib/gamification';
@@ -29,6 +29,7 @@ import { createEventId, getLocalDay } from '../lib/date-utils';
 import { successHaptic, warningHaptic } from '../lib/haptics';
 import type { RecitationAssessment } from '../lib/recitation-storage';
 import type { Ayah } from './useSurahFetcher';
+import { toast } from '../components/ui/Toast';
 
 // ── Supabase Mutation Retry Helper ───────────────────────────────────────────
 
@@ -161,10 +162,7 @@ export function useRecitationSync(): RecitationSyncResult {
                     createdAt: new Date().toISOString(),
                 });
                 await warningHaptic();
-                Alert.alert(
-                    'تم حفظ التقدم محلياً',
-                    'أنت غير متصل الآن. حفظنا نتيجة التسميع على جهازك وسنزامنها عند عودة الاتصال.'
-                );
+                toast.info('أنت غير متصل الآن. حفظنا نتيجة التسميع على جهازك وسنزامنها عند عودة الاتصال.', 5000);
                 return {
                     success: true,
                     isSurahCompleted: selectedRange.from === 1 && selectedRange.to >= totalVerses,
@@ -287,11 +285,11 @@ export function useRecitationSync(): RecitationSyncResult {
                 }
             }
 
-            Alert.alert('تم الحفظ ✅', 'تم حفظ تقدمك! تمت إضافة نقاط XP 🎉');
+            toast.success('تم حفظ تقدمك! تمت إضافة نقاط XP 🎉');
             return { success: true, isSurahCompleted: false, hasNextSurah: false };
         } catch (error) {
             console.error('Error saving results:', error);
-            Alert.alert('خطأ', 'فشل حفظ النتائج. يرجى المحاولة مرة أخرى.');
+            toast.error('فشل حفظ النتائج. يرجى المحاولة مرة أخرى.');
             return { success: false, isSurahCompleted: false, hasNextSurah: false };
         } finally {
             setSaving(false);

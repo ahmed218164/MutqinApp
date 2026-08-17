@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
 import { ArrowLeft, Moon, Sun, Type, LogOut, Bell, Trash2, KeyRound, CheckCircle2, CircleAlert } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useThemeColors } from '../constants/dynamicTheme';
@@ -22,6 +23,7 @@ import { useSettings } from '../lib/settings';
 import { getSavedGeminiApiKey, saveGeminiApiKey, testGeminiConnection } from '../lib/gemini-api-key';
 import { getSavedGroqApiKey, saveGroqApiKey, testGroqConnection } from '../lib/groq-api-key';
 import { MUTQIN_MODEL_ROUTES, MutqinModelTask } from '../lib/ai-models';
+import { toast } from '../components/ui/Toast';
 
 const MODEL_ROUTE_LABELS: Record<MutqinModelTask, string> = {
     dailyText: 'التخطيط والمساعدة اليومية',
@@ -119,11 +121,29 @@ export default function SettingsScreen() {
     }
 
     async function handleClearCache() {
-        Alert.alert(
-            'إعادة تشغيل التطبيق',
-            'الصور مدمجة في التطبيق ولا تحتاج لمسح. لإصلاح أي مشكلة في العرض، أغلق التطبيق وأعد فتحه.',
-            [{ text: 'حسناً' }]
-        );
+        try {
+            const cacheDir = FileSystem.cacheDirectory;
+            let freedBytes = 0;
+            if (cacheDir) {
+                const items = await FileSystem.readDirectoryAsync(cacheDir);
+                for (const item of items) {
+                    const itemPath = cacheDir + item;
+                    const info = await FileSystem.getInfoAsync(itemPath);
+                    if (info.exists) {
+                        freedBytes += info.size ?? 0;
+                        await FileSystem.deleteAsync(itemPath, { idempotent: true });
+                    }
+                }
+            }
+            const mb = (freedBytes / 1048576).toFixed(1);
+            toast.success(
+                Number(mb) > 0
+                    ? `تم تحرير ${mb} ميجابايت من الذاكرة المؤقتة.`
+                    : 'الذاكرة المؤقتة نظيفة بالفعل.'
+            );
+        } catch {
+            toast.error('تعذّر مسح الذاكرة المؤقتة. حاول مرة أخرى.');
+        }
     }
 
     async function handleSignOut() {
@@ -141,7 +161,7 @@ export default function SettingsScreen() {
                             await signOut();
                             router.replace('/login');
                         } catch (error) {
-                            Alert.alert('خطأ', 'فشل تسجيل الخروج');
+                            toast.error('فشل تسجيل الخروج');
                         } finally {
                             setLoading(false);
                         }
@@ -155,7 +175,7 @@ export default function SettingsScreen() {
         <SafeAreaView style={[styles.container, { backgroundColor: DynColors.neutral[50] }]}>
             {/* Header */}
             <LinearGradient
-                colors={['#042f2e', '#0d534f', '#115e59']}
+                colors={Colors.gradients.header}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.header}
@@ -456,7 +476,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     settingIcon: {
-        marginRight: Spacing.md,
+        marginStart: Spacing.md,
     },
     settingInfo: {
         flex: 1,
@@ -609,7 +629,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     menuIcon: {
-        marginRight: Spacing.md,
+        marginStart: Spacing.md,
     },
     menuText: {
         flex: 1,

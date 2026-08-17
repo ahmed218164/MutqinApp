@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     loader: {
-        marginRight: Spacing.sm,
+        marginStart: Spacing.sm,
     },
     hint: {
         color: Colors.neutral[500],

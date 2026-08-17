@@ -130,7 +130,7 @@ function DailyWardCard({ ward, accentColor, isHafs, heroGradientColors, onStart,
         return (
             <View style={styles.heroCardWrapper}>
                 <LinearGradient
-                    colors={['#0f172a', '#1e293b', '#0f172a']}
+                    colors={[Colors.neutral[900], Colors.neutral[800], Colors.neutral[900]]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFill}
                 />
@@ -196,7 +196,7 @@ function DailyWardCard({ ward, accentColor, isHafs, heroGradientColors, onStart,
                             </Text>
                         </View>
                         <Text style={styles.focusSurah}>{main.surahName}</Text>
-                        <Text style={[styles.focusDetailText, { color: accentColor, marginTop: 2 }]}>
+                        <Text style={[styles.focusDetailText, { color: accentColor, marginTop: 2 }]} maxFontSizeMultiplier={1.3}>
                             {verseRangeLabel}
                         </Text>
                     </View>
@@ -226,21 +226,21 @@ function DailyWardCard({ ward, accentColor, isHafs, heroGradientColors, onStart,
                 {/* 3-Pillar Quranic Plan Badges */}
                 <View style={{ flexDirection: 'row-reverse', gap: 6, marginVertical: Spacing.sm, flexWrap: 'wrap' }}>
                     {ward.alJadeed ? (
-                        <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#10b981' }}>
-                            <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '700' }}>
+                        <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: Colors.emerald[500] }}>
+                            <Text style={{ color: Colors.emerald[500], fontSize: 12, fontWeight: '700' }}>
                                 🟢 الجديد: {ward.alJadeed.surahName}
                             </Text>
                         </View>
                     ) : null}
                     {ward.alQareeb ? (
-                        <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#f59e0b' }}>
-                            <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '700' }}>
+                        <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: Colors.gold[500] }}>
+                            <Text style={{ color: Colors.gold[500], fontSize: 12, fontWeight: '700' }}>
                                 🟡 الصغرى: {ward.alQareeb.surahName}
                             </Text>
                         </View>
                     ) : null}
                     {ward.alBaeed ? (
-                        <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#ef4444' }}>
+                        <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: Colors.error }}>
                             <Text style={{ color: '#f87171', fontSize: 12, fontWeight: '700' }}>
                                 🔴 الكبرى: {ward.alBaeed.surahName}
                             </Text>
@@ -283,6 +283,8 @@ export default function Dashboard() {
     const [dailyWard, setDailyWard] = React.useState<DailyWard | null>(null);
     const [showClozeModal, setShowClozeModal] = React.useState(false);
     const [showLiveModal, setShowLiveModal] = React.useState(false);
+    // True when the initial dashboard load failed and we have nothing to show.
+    const [loadError, setLoadError] = React.useState(false);
     // Track whether we already triggered the auto-advance for this session to prevent double-firing
     const autoAdvancedRef = React.useRef(false);
     const autoRoutedRef = React.useRef(false);
@@ -311,6 +313,7 @@ export default function Dashboard() {
 
     async function loadDashboardData() {
         try {
+            setLoadError(false);
             if (!user) {
                 setLoading(false);
                 return;
@@ -434,6 +437,11 @@ export default function Dashboard() {
 
         } catch (error) {
             console.error('Error loading dashboard:', error);
+            // Only surface the error UI when there is no previously loaded
+            // content to keep showing (stale data beats an error screen).
+            if (!plannerData) {
+                setLoadError(true);
+            }
         } finally {
             setLoading(false);
         }
@@ -455,8 +463,8 @@ export default function Dashboard() {
         : 0;
 
     const heroGradientColors = isHafs
-        ? (['#011c1a', '#022c22', '#065f46', '#0f766e'] as const)
-        : (['#1c0e00', '#451a03', '#78350f', '#b45309'] as const);
+        ? (['#011c1a', Colors.emerald[950], Colors.emerald[800], '#0f766e'] as const)
+        : (['#1c0e00', Colors.gold[950], Colors.gold[900], Colors.gold[700]] as const);
 
     return (
         <View style={styles.container}>
@@ -494,6 +502,22 @@ export default function Dashboard() {
                     {loading ? (
                         <View style={{ marginTop: Spacing.xl }}>
                             <SkeletonLoader width="100%" height={200} borderRadius={BorderRadius['2xl']} />
+                        </View>
+                    ) : loadError && !plannerData ? (
+                        <View style={styles.errorBox}>
+                            <AlertCircle size={44} color={Colors.gold[400]} />
+                            <Text style={styles.errorTitle}>تعذّر تحميل البيانات</Text>
+                            <Text style={styles.errorMessage}>
+                                تحقق من اتصالك بالإنترنت وحاول مرة أخرى
+                            </Text>
+                            <GradientButton
+                                title="إعادة المحاولة"
+                                onPress={() => {
+                                    setLoading(true);
+                                    loadDashboardData();
+                                }}
+                                style={styles.errorRetryButton}
+                            />
                         </View>
                     ) : (
                         <>
@@ -561,7 +585,7 @@ export default function Dashboard() {
                                     activeOpacity={0.88}
                                 >
                                     <LinearGradient
-                                        colors={['#022c22', '#064e3b', '#047857']}
+                                        colors={[Colors.emerald[950], Colors.emerald[900], Colors.emerald[700]]}
                                         start={{ x: 0, y: 0 }}
                                         end={{ x: 1, y: 1 }}
                                         style={styles.clozeGradient}
@@ -587,14 +611,14 @@ export default function Dashboard() {
                                     activeOpacity={0.88}
                                 >
                                     <LinearGradient
-                                        colors={['#064e3b', '#047857', '#059669']}
+                                        colors={[Colors.emerald[900], Colors.emerald[700], Colors.emerald[600]]}
                                         start={{ x: 0, y: 0 }}
                                         end={{ x: 1, y: 1 }}
                                         style={styles.clozeGradient}
                                     >
                                         <View style={styles.clozeContent}>
                                             <View style={styles.clozeBadge}>
-                                                <Radio size={16} color="#10b981" />
+                                                <Radio size={16} color={Colors.emerald[500]} />
                                                 <Text style={styles.clozeBadgeText}>جلسة حية مباشرة (Live API)</Text>
                                             </View>
                                             <View style={{ gap: 4 }}>
@@ -789,16 +813,17 @@ const styles = StyleSheet.create({
         borderRadius: 3,
     },
     focusLabel: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '700' as const,
         letterSpacing: 0,
-        textTransform: 'uppercase',
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     focusSurah: {
         fontSize: Typography.fontSize['3xl'],
         fontWeight: '800' as const,
         color: Colors.text.inverse,
         letterSpacing: 0,
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     focusIconCircle: {
         width: 44,
@@ -807,7 +832,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: Spacing.sm,  // RTL: was marginLeft
+        marginStart: Spacing.sm,  // RTL: was marginLeft
     },
     progressText: {
         fontSize: Typography.fontSize.xs,
@@ -877,7 +902,7 @@ const styles = StyleSheet.create({
     },
     horizontalContent: {
         gap: Spacing.md,
-        paddingRight: Spacing.lg,
+        paddingStart: Spacing.lg,
     },
     reviewCard: {
         width: 140,
@@ -992,5 +1017,33 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.xs,
         color: Colors.emerald[300],
         fontWeight: '600',
+    },
+    // ── Load-error state ──
+    errorBox: {
+        marginTop: Spacing.xl,
+        alignItems: 'center',
+        padding: Spacing.xl,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.25)',
+        backgroundColor: 'rgba(2, 6, 23, 0.6)',
+        gap: Spacing.sm,
+    },
+    errorTitle: {
+        fontSize: Typography.fontSize.lg,
+        fontWeight: Typography.fontWeight.bold,
+        color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'center',
+    },
+    errorMessage: {
+        fontSize: Typography.fontSize.sm,
+        color: Colors.text.tertiary,
+        fontFamily: Typography.fontFamily.arabic,
+        textAlign: 'center',
+        marginBottom: Spacing.sm,
+    },
+    errorRetryButton: {
+        minWidth: 160,
     },
 });

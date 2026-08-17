@@ -6,17 +6,18 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    Image,
     Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Heart, Github, Globe, Mail } from 'lucide-react-native';
+import Constants from 'expo-constants';
+import { ArrowRight, Heart, Mail } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors as StaticColors, Typography, Spacing, BorderRadius } from '../constants/theme';
+import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
 import Card from '../components/ui/Card';
 
 export default function AboutScreen() {
     const router = useRouter();
+    const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
     const handleLink = (url: string) => {
         Linking.openURL(url);
@@ -25,73 +26,78 @@ export default function AboutScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <LinearGradient
-                colors={['#042f2e', '#0d534f', '#115e59']}
+                colors={Colors.gradients.header}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.header}
             >
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <ArrowLeft color={StaticColors.text.inverse} size={24} />
+                <TouchableOpacity
+                    onPress={() => router.back()}
+                    style={styles.backButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="رجوع"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                    <ArrowRight color={Colors.text.inverse} size={24} />
                 </TouchableOpacity>
-                <Text style={styles.title}>About Mutqin</Text>
+                <Text style={styles.title}>عن التطبيق</Text>
             </LinearGradient>
 
-            <ScrollView style={styles.content}>
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                 <View style={styles.logoContainer}>
                     <View style={styles.logoPlaceholder}>
-                        <Text style={styles.logoText}>M</Text>
+                        <Text style={styles.logoText}>م</Text>
                     </View>
-                    <Text style={styles.appName}>Mutqin App</Text>
-                    <Text style={styles.version}>Version 1.0.0</Text>
+                    <Text style={styles.appName}>مُتقِن</Text>
+                    <Text style={styles.version}>الإصدار {appVersion}</Text>
                 </View>
 
-                <Card style={styles.card}>
-                    <Text style={styles.sectionTitle}>Our Mission</Text>
+                <Card style={styles.card} variant="glass">
+                    <Text style={styles.sectionTitle}>رسالتنا</Text>
                     <Text style={styles.text}>
-                        Mutqin is designed to help Muslims around the world perfect their Quran memorization and recitation using advanced AI technology. We believe that everyone deserves a personal Quran tutor available 24/7.
+                        صُمِّم «مُتقِن» لمساعدة المسلمين حول العالم على إتقان حفظ القرآن الكريم وتلاوته
+                        باستخدام تقنيات الذكاء الاصطناعي. نؤمن بأن كل مسلم يستحق معلّماً خاصاً للقرآن
+                        متاحاً في أي وقت.
                     </Text>
                 </Card>
 
-                <Card style={styles.card}>
-                    <Text style={styles.sectionTitle}>Features</Text>
+                <Card style={styles.card} variant="glass">
+                    <Text style={styles.sectionTitle}>المميزات</Text>
                     <View style={styles.featureRow}>
                         <Text style={styles.bullet}>•</Text>
-                        <Text style={styles.featureText}>AI Tajweed Analysis</Text>
+                        <Text style={styles.featureText}>تحليل التلاوة وتصحيح التجويد بالذكاء الاصطناعي</Text>
                     </View>
                     <View style={styles.featureRow}>
                         <Text style={styles.bullet}>•</Text>
-                        <Text style={styles.featureText}>Personalized Memorization Plans</Text>
+                        <Text style={styles.featureText}>خطط حفظ شخصية وفق مستواك ووقتك</Text>
                     </View>
                     <View style={styles.featureRow}>
                         <Text style={styles.bullet}>•</Text>
-                        <Text style={styles.featureText}>Progress Tracking & Analytics</Text>
+                        <Text style={styles.featureText}>تتبع التقدم وإحصائيات مفصلة</Text>
                     </View>
                     <View style={styles.featureRow}>
                         <Text style={styles.bullet}>•</Text>
-                        <Text style={styles.featureText}>Gamified Learning Experience</Text>
+                        <Text style={styles.featureText}>تجربة تعليمية محفِّزة بالتحديات والشارات</Text>
                     </View>
                 </Card>
 
-                <Card style={styles.card}>
-                    <Text style={styles.sectionTitle}>Contact Us</Text>
-                    <TouchableOpacity style={styles.linkRow} onPress={() => handleLink('mailto:support@mutqin.app')}>
-                        <Mail size={20} color={StaticColors.emerald[600]} />
+                <Card style={styles.card} variant="glass">
+                    <Text style={styles.sectionTitle}>تواصل معنا</Text>
+                    <TouchableOpacity
+                        style={styles.linkRow}
+                        onPress={() => handleLink('mailto:ahmedelhawashy203033@gmail.com')}
+                        accessibilityRole="button"
+                        accessibilityLabel="مراسلتنا بالبريد الإلكتروني"
+                    >
+                        <Mail size={20} color={Colors.emerald[400]} />
                         <Text style={styles.linkText}>ahmedelhawashy203033@gmail.com</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.linkRow} onPress={() => handleLink('https://github.com/mutqin')}>
-                        <Github size={20} color={StaticColors.emerald[600]} />
-                        <Text style={styles.linkText}>GitHub Repository</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.linkRow} onPress={() => handleLink('https://mutqin.app')}>
-                        <Globe size={20} color={StaticColors.emerald[600]} />
-                        <Text style={styles.linkText}>Visit Website</Text>
                     </TouchableOpacity>
                 </Card>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Made by Ahmed Zaki</Text>
-                    <Heart size={14} color={StaticColors.error} style={{ marginHorizontal: 4 }} fill={StaticColors.error} />
-                    <Text style={styles.footerText}>for the Ummah</Text>
+                    <Text style={styles.footerText}>صُنع بكل</Text>
+                    <Heart size={14} color={Colors.error} style={{ marginHorizontal: 4 }} fill={Colors.error} />
+                    <Text style={styles.footerText}>لخدمة كتاب الله</Text>
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -101,22 +107,25 @@ export default function AboutScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: StaticColors.neutral[50],
+        backgroundColor: Colors.neutral[950],
     },
     header: {
         padding: Spacing.xl,
         paddingTop: Spacing['3xl'],
         paddingBottom: Spacing.xl,
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
     },
     backButton: {
-        marginRight: Spacing.md,
+        padding: Spacing.xs,
     },
     title: {
         fontSize: Typography.fontSize['2xl'],
         fontWeight: Typography.fontWeight.bold,
-        color: StaticColors.text.inverse,
+        color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'right',
+        flex: 1,
     },
     content: {
         padding: Spacing.lg,
@@ -130,24 +139,29 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 20,
-        backgroundColor: StaticColors.emerald[950],
+        backgroundColor: Colors.emerald[950],
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.25)',
     },
     logoText: {
         fontSize: 40,
         fontWeight: 'bold',
-        color: StaticColors.gold[500],
+        color: Colors.gold[500],
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     appName: {
         fontSize: Typography.fontSize['2xl'],
         fontWeight: Typography.fontWeight.bold,
-        color: StaticColors.emerald[950],
+        color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     version: {
         fontSize: Typography.fontSize.sm,
-        color: StaticColors.text.tertiary,
+        color: Colors.text.tertiary,
+        fontFamily: Typography.fontFamily.arabic,
     },
     card: {
         marginBottom: Spacing.lg,
@@ -155,36 +169,43 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: Typography.fontSize.lg,
         fontWeight: Typography.fontWeight.bold,
-        color: StaticColors.text.primary,
+        color: Colors.text.inverse,
         marginBottom: Spacing.md,
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'right',
     },
     text: {
         fontSize: Typography.fontSize.base,
-        color: StaticColors.text.secondary,
-        lineHeight: 24,
+        color: Colors.text.secondary,
+        lineHeight: 28,
+        fontFamily: Typography.fontFamily.arabic,
+        textAlign: 'right',
     },
     featureRow: {
-        flexDirection: 'row',
-        marginBottom: Spacing.xs,
+        flexDirection: 'row-reverse',
+        marginBottom: Spacing.sm,
     },
     bullet: {
         fontSize: Typography.fontSize.base,
-        color: StaticColors.gold[600],
-        marginRight: Spacing.sm,
+        color: Colors.gold[400],
+        marginStart: Spacing.sm,
     },
     featureText: {
         fontSize: Typography.fontSize.base,
-        color: StaticColors.text.secondary,
+        color: Colors.text.secondary,
+        fontFamily: Typography.fontFamily.arabic,
+        textAlign: 'right',
+        flex: 1,
     },
     linkRow: {
-        flexDirection: 'row',
+        flexDirection: 'row-reverse',
         alignItems: 'center',
         paddingVertical: Spacing.sm,
     },
     linkText: {
         fontSize: Typography.fontSize.base,
-        color: StaticColors.emerald[600],
-        marginLeft: Spacing.md,
+        color: Colors.emerald[400],
+        marginStart: Spacing.md,
         fontWeight: Typography.fontWeight.medium,
     },
     footer: {
@@ -196,6 +217,7 @@ const styles = StyleSheet.create({
     },
     footerText: {
         fontSize: Typography.fontSize.sm,
-        color: StaticColors.text.tertiary,
+        color: Colors.text.tertiary,
+        fontFamily: Typography.fontFamily.arabic,
     },
 });

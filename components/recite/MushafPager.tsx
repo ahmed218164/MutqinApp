@@ -5,20 +5,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, withDelay } fro
 import MushafPage, { getPageSource } from './MushafPage';
 import { Typography, Spacing, BorderRadius, Colors } from '../../constants/theme';
 import { SURAHS } from '../../constants/surahs';
-
-// ── Juz start pages (1-indexed, standard Mushaf) ──────────────────────────────
-const JUZ_PAGES: number[] = [
-    1,22,42,62,82,102,121,142,162,182,
-    201,222,242,262,282,302,322,342,362,382,
-    402,422,442,462,482,502,522,542,562,582,
-];
-
-function getJuzForPage(page: number): number {
-    for (let j = JUZ_PAGES.length - 1; j >= 0; j--) {
-        if (page >= JUZ_PAGES[j]) return j + 1;
-    }
-    return 1;
-}
+import { JUZ_PAGES, getJuzForPage } from '../../constants/juz';
 
 function getSurahForPage(page: number): string {
     for (let i = SURAHS.length - 1; i >= 0; i--) {
@@ -110,14 +97,13 @@ function MushafPagerInner({
     // Adjacent pages are pre-decoded via the hidden preload strip below.
     // offscreenPageLimit keeps those pages alive in PagerView's native tree.
 
-    // ── Preload: resolve source references for ±2 adjacent pages ────────────
-    // We import getPageSource here (it lives in MushafPage.tsx) but we only
-    // need to trigger the native decode, so we re-use getPageSource exported
-    // from MushafPage via a named re-export.
-    // Simpler approach: render hidden 1×1 Image nodes for adjacent pages.
+    // ── Preload: pre-warm decode for ±1 adjacent pages only ────────────────
+    // Reference-app parity: keep at most ~5 decoded bitmaps alive (3 mounted
+    // via offscreenPageLimit=1 + 2 pre-warmed here). Each page decodes to
+    // ~6MB of RGBA, so every extra page costs real memory and frame time.
     const preloadPages = React.useMemo(() => {
         const adjacent: number[] = [];
-        for (const delta of [-2, -1, 1, 2]) {
+        for (const delta of [-1, 1]) {
             const p = currentPage + delta;
             if (p >= startPage && p <= endPage) adjacent.push(p);
         }
@@ -169,7 +155,7 @@ function MushafPagerInner({
                         flashPageIndicator();
                     }
                 }}
-                offscreenPageLimit={2}
+                offscreenPageLimit={1}
                 // RTL = swipe right → next page, matching Arabic Mushaf reading direction
                 layoutDirection="rtl"
             >
@@ -196,7 +182,7 @@ function MushafPagerInner({
             </PagerView>
 
             {/* ── Hidden preload strip ────────────────────────────────────
-                Renders ±2 adjacent page images off-screen so the native image
+                Renders ±1 adjacent page images off-screen so the native image
                 decoder pre-warms them before the user swipes. This eliminates
                 the white flash on page transitions.
                 1×1 size so it adds zero layout cost.
@@ -241,7 +227,7 @@ function MushafPagerInner({
             ) : (
                 <TouchableOpacity onPress={() => { setJumpVisible(true); flashPageIndicator(); }} activeOpacity={0.7}>
                     <Animated.View style={[styles.pageIndicator, indicatorStyle]} pointerEvents="box-none">
-                        <Text style={styles.pageIndicatorText}>
+                        <Text style={styles.pageIndicatorText} maxFontSizeMultiplier={1.2}>
                             {getSurahForPage(currentPage)} · الجزء {getJuzForPage(currentPage)} · ص {currentPage}
                         </Text>
                     </Animated.View>

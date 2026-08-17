@@ -26,7 +26,7 @@ import {
     type AudioRecorder,
     type RecordingOptions,
 } from 'expo-audio';
-import { Alert } from 'react-native';
+import { } from 'react-native';
 import { checkRecitationWithMuaalem, MuaalemAssessment, MuaalemMistake, AyahRange } from '../lib/muaalem-api';
 import { mediumImpact } from '../lib/haptics';
 import { useSharedValue } from 'react-native-reanimated';
@@ -86,18 +86,20 @@ interface ChunkResult {
 export interface VADRecorderState {
     isSessionActive: boolean;
     isRecording: boolean;
-    elapsedSeconds: number;
     chunksSent: number;
     chunksCompleted: number;
     isFinishing: boolean;
 }
 
 import type { SharedValue } from 'react-native-reanimated';
+import { toast } from '../components/ui/Toast';
 
 export interface UseVADRecorderReturn {
     state: VADRecorderState;
     meterLevelShared: SharedValue<number>;
     meterHistoryShared: SharedValue<number[]>;
+    /** Elapsed session seconds — updated on the UI thread (no React re-renders). */
+    elapsedSecondsShared: SharedValue<number>;
     startSession: () => Promise<void>;
     finishSession: () => Promise<MuaalemAssessment | null>;
     cancelSession: () => Promise<void>;
@@ -125,15 +127,15 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
     const [state, setState] = useState<VADRecorderState>({
         isSessionActive: false,
         isRecording: false,
-        elapsedSeconds: 0,
         chunksSent: 0,
         chunksCompleted: 0,
         isFinishing: false,
     });
 
-    // ── Reanimated shared values for metering (no React re-renders) ────────
+    // ── Reanimated shared values for metering + timer (no React re-renders) ─
     const meterLevelShared = useSharedValue(0);
     const meterHistoryShared = useSharedValue<number[]>(new Array(HISTORY_SIZE).fill(0));
+    const elapsedSecondsShared = useSharedValue(0);
 
     // ── Refs (mutable across renders) ────────────────────────────────────────
     const recordingRef = useRef<AudioRecorder | null>(null);
@@ -312,7 +314,7 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
 
             const permission = await requestRecordingPermissionsAsync();
             if (!permission.granted) {
-                Alert.alert('إذن مطلوب', 'يرجى السماح بالوصول إلى الميكروفون');
+                toast.error('يرجى السماح بالوصول إلى الميكروفون');
                 return;
             }
 
@@ -335,7 +337,6 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         setState({
             isSessionActive: true,
             isRecording: true,
-            elapsedSeconds: 0,
             chunksSent: 0,
             chunksCompleted: 0,
             isFinishing: false,
@@ -344,21 +345,22 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         // Reset metering shared values
         meterLevelShared.value = 0;
         meterHistoryShared.value = new Array(HISTORY_SIZE).fill(0);
+        elapsedSecondsShared.value = 0;
 
-            // Start pollers
-            startMeteringPoller();
+        // Start pollers
+        startMeteringPoller();
 
-            const sessionStart = Date.now();
-            elapsedTimerRef.current = setInterval(() => {
-                setState(prev => ({
-                    ...prev,
-                    elapsedSeconds: Math.floor((Date.now() - sessionStart) / 1000),
-                }));
-            }, 1000);
+        // Elapsed timer updates a shared value on the UI thread — updating
+        // React state every second here used to re-render the whole recite
+        // screen (including the mushaf pager) once per second.
+        const sessionStart = Date.now();
+        elapsedTimerRef.current = setInterval(() => {
+            elapsedSecondsShared.value = Math.floor((Date.now() - sessionStart) / 1000);
+        }, 1000);
         } catch (err) {
             console.error('[VAD] startSession error:', err);
             sessionActiveRef.current = false;
-            Alert.alert('خطأ', 'فشل بدء التسجيل. حاول مرة أخرى.');
+            toast.error('فشل بدء التسجيل. حاول مرة أخرى.');
         }
     }, [referenceText]);
 
@@ -481,7 +483,6 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         setState({
             isSessionActive: false,
             isRecording: false,
-            elapsedSeconds: 0,
             chunksSent: 0,
             chunksCompleted: 0,
             isFinishing: false,
@@ -490,9 +491,10 @@ export function useVADRecorder(referenceText: string, ayahRange?: AyahRange): Us
         // Reset metering shared values
         meterLevelShared.value = 0;
         meterHistoryShared.value = new Array(HISTORY_SIZE).fill(0);
+        elapsedSecondsShared.value = 0;
     }, []);
 
-    return { state, meterLevelShared, meterHistoryShared, startSession, finishSession, cancelSession };
+    return { state, meterLevelShared, meterHistoryShared, elapsedSecondsShared, startSession, finishSession, cancelSession };
 }
 
 // ─── Aggregation ─────────────────────────────────────────────────────────────

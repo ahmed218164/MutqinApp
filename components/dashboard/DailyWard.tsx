@@ -1,10 +1,11 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity} from 'react-native';
 import { Play, Mic, Lock, CheckCircle } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { getSurahByNumber } from '../../constants/surahs';
 import Card from '../ui/Card';
 import { lightImpact } from '../../lib/haptics';
+import { toast } from '../ui/Toast';
 
 interface DailyWardProps {
     dayNumber: number;
@@ -34,7 +35,7 @@ export default function DailyWard({
     const handleListen = () => {
         lightImpact();
         if (!isUnlocked) {
-            Alert.alert('مغلق', 'يجب إكمال الأوراد السابقة أولاً');
+            toast.info('يجب إكمال الأوراد السابقة أولاً');
             return;
         }
         onListen();
@@ -43,7 +44,7 @@ export default function DailyWard({
     const handleRecite = () => {
         lightImpact();
         if (!isUnlocked) {
-            Alert.alert('مغلق', 'يجب إكمال الأوراد السابقة أولاً');
+            toast.info('يجب إكمال الأوراد السابقة أولاً');
             return;
         }
         onRecite();

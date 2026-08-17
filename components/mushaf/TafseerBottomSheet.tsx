@@ -20,7 +20,6 @@ import {
     ScrollView,
     TouchableWithoutFeedback,
     ActivityIndicator,
-    Alert,
 } from 'react-native';
 import Animated, {
     useSharedValue,
@@ -46,6 +45,7 @@ import {
 } from '../../lib/tafsir-engine';
 import { SURAHS } from '../../constants/surahs';
 import { explainAsbabAlNuzulGrounded, GroundedTafseerResponse } from '../../lib/ai-features-suite';
+import { toast } from '../ui/Toast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -172,7 +172,7 @@ export default function TafseerBottomSheet({
             });
             setSourceStatus(s => ({ ...s, [source.id]: true }));
         } catch (e: any) {
-            Alert.alert('خطأ', `فشل تحميل التفسير: ${e?.message}`);
+            toast.error(`فشل تحميل التفسير: ${e?.message}`);
         } finally {
             setDownloading(d => { const n = { ...d }; delete n[source.id]; return n; });
         }

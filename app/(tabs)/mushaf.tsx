@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { Search, ChevronRight, BookOpen, Bookmark } from 'lucide-react-native';
+import { Search, ChevronRight, BookOpen, Bookmark, Mic } from 'lucide-react-native';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -132,7 +132,7 @@ const SurahRow = React.memo(function SurahRow({ item, index, onPress }: { item: 
                     <Text style={rowStyles.transliteration}>{item.transliteration}</Text>
                     <View style={rowStyles.metaRow}>
                         <View style={[rowStyles.typePill, { backgroundColor: accentColor + '15', borderColor: accentColor + '40' }]}>
-                            <Text style={[rowStyles.typePillText, { color: accentColor }]}>{item.type === 'Makki' ? 'مكية' : 'مدنية'}</Text>
+                            <Text style={[rowStyles.typePillText, { color: accentColor }]} maxFontSizeMultiplier={1.2}>{item.type === 'Makki' ? 'مكية' : 'مدنية'}</Text>
                         </View>
                         <Text style={rowStyles.metaDot}>·</Text>
                         <Text style={rowStyles.metaText}>{item.verses} آية</Text>
@@ -158,8 +158,8 @@ const rowStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 14,
-        paddingRight: Spacing.base,
-        paddingLeft: 0,
+        paddingStart: Spacing.base,
+        paddingEnd: 0,
         position: 'relative',
     },
     androidBg: {
@@ -200,10 +200,10 @@ const rowStyles = StyleSheet.create({
         borderWidth: 1,
     },
     typePillText: {
-        fontSize: 9,
+        fontSize: 10,
         fontWeight: '700' as const,
-        letterSpacing: 0.5,
-        textTransform: 'uppercase',
+        letterSpacing: 0,
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     metaDot: {
         color: Colors.text.tertiary,
@@ -337,6 +337,14 @@ export default function MushafScreen() {
                         </View>
                         <View style={styles.headerActions}>
                             <TouchableOpacity
+                                onPress={() => router.push('/free-recite')}
+                                style={styles.headerButton}
+                                accessibilityRole="button"
+                                accessibilityLabel="تسميع حر"
+                            >
+                                <Mic size={18} color={Colors.gold[400]} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
                                 onPress={() => setSearchModalVisible(true)}
                                 style={styles.headerButton}
                                 accessibilityRole="button"
@@ -370,7 +378,12 @@ export default function MushafScreen() {
                             returnKeyType="search"
                         />
                         {searchQuery.length > 0 && (
-                            <TouchableOpacity onPress={() => handleSearch('')}>
+                            <TouchableOpacity
+                                onPress={() => handleSearch('')}
+                                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                                accessibilityRole="button"
+                                accessibilityLabel="مسح البحث"
+                            >
                                 <Text style={styles.clearBtn}>✕</Text>
                             </TouchableOpacity>
                         )}
@@ -383,7 +396,7 @@ export default function MushafScreen() {
                         {[...Array(10)].map((_, idx) => (
                             <View key={idx} style={[rowStyles.wrapper, { marginBottom: 8, padding: Spacing.base }]}>
                                 <SkeletonLoader width={46} height={46} borderRadius={23} />
-                                <View style={{ flex: 1, marginLeft: Spacing.base }}>
+                                <View style={{ flex: 1, marginEnd: Spacing.base }}>
                                     <SkeletonLoader width="60%" height={18} style={{ marginBottom: 6 }} />
                                     <SkeletonLoader width="40%" height={14} />
                                 </View>
@@ -463,7 +476,7 @@ const styles = StyleSheet.create({
         color: Colors.emerald[400],
         fontWeight: '600' as const,
         letterSpacing: 0,
-        textTransform: 'uppercase',
+        fontFamily: Typography.fontFamily.arabic,
         marginBottom: 2,
     },
     title: {
@@ -471,6 +484,7 @@ const styles = StyleSheet.create({
         fontWeight: '800' as const,
         color: Colors.text.inverse,
         letterSpacing: 0,
+        fontFamily: Typography.fontFamily.arabicBold,
     },
     headerActions: {
         flexDirection: 'row',
@@ -478,7 +492,8 @@ const styles = StyleSheet.create({
         paddingBottom: 4,
     },
     headerButton: {
-        padding: 9,
+        // 18px icon + 2×13px padding ≈ 44px touch target
+        padding: 13,
         borderRadius: BorderRadius.md,
         backgroundColor: 'rgba(251, 191, 36, 0.1)',
         borderWidth: 1,

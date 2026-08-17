@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(16, 185, 129, 0.15)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginLeft: 12,
+        marginEnd: 12,
     },
     reciterInfo: {
         flex: 1,
@@ -419,6 +419,6 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.emerald[500],
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 8,
+        marginStart: 8,
     },
 });

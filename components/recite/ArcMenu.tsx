@@ -24,7 +24,6 @@ import {
     StyleSheet,
     Dimensions,
     Share,
-    Alert,
     Clipboard,
 } from 'react-native';
 import Animated, {
@@ -41,6 +40,7 @@ import {
     Copy, Volume2, Bookmark, Share2, X,
 } from 'lucide-react-native';
 import { lightImpact, mediumImpact } from '../../lib/haptics';
+import { toast } from '../ui/Toast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ export default function ArcMenu({
             case 'copy':
                 if (verseText) {
                     Clipboard.setString(`${verseText}\n${verseRef}`);
-                    Alert.alert('تم النسخ', 'تم نسخ الآية إلى الحافظة');
+                    toast.success('تم نسخ الآية إلى الحافظة');
                 }
                 onClose();
                 break;

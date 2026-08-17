@@ -183,7 +183,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
             <View style={styles.overlay}>
                 <View style={styles.modalCard}>
                     <LinearGradient
-                        colors={['#064e3b', '#022c22']}
+                        colors={[Colors.emerald[900], Colors.emerald[950]]}
                         style={StyleSheet.absoluteFill}
                     />
                     {Platform.OS !== 'android' ? (
@@ -195,9 +195,9 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
                         <View style={styles.badgeRow}>
                             <View style={[styles.liveTag, sessionState.isLiveStreamMode ? styles.liveTagStreaming : null]}>
                                 {sessionState.isLiveStreamMode ? (
-                                    <Activity color="#10b981" size={14} />
+                                    <Activity color={Colors.emerald[500]} size={14} />
                                 ) : (
-                                    <Radio color="#10b981" size={14} />
+                                    <Radio color={Colors.emerald[500]} size={14} />
                                 )}
                                 <Text style={styles.liveTagText}>
                                     {sessionState.isLiveStreamMode
@@ -236,7 +236,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
                                 disabled={isReviewing}
                             >
                                 <LinearGradient
-                                    colors={isRecording ? ['#ef4444', '#dc2626'] : ['#10b981', '#059669']}
+                                    colors={isRecording ? [Colors.error, '#dc2626'] : [Colors.emerald[500], Colors.emerald[600]]}
                                     style={styles.micGradient}
                                 >
                                     {isReviewing ? (
@@ -268,7 +268,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
                         {sessionState.tajweedFeedback ? (
                             <View style={styles.feedbackCard}>
                                 <View style={styles.feedbackHeader}>
-                                    <Sparkles color="#f59e0b" size={18} />
+                                    <Sparkles color={Colors.gold[500]} size={18} />
                                     <Text style={styles.feedbackTitle}>توجيه المعلم اللحظي</Text>
                                 </View>
                                 <Text style={styles.feedbackContent}>{sessionState.tajweedFeedback}</Text>
@@ -280,7 +280,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
                             {!isRecording ? (
                                 <TouchableOpacity style={styles.startBtn} onPress={handleStartSession}>
                                     <LinearGradient
-                                        colors={['#10b981', '#059669']}
+                                        colors={[Colors.emerald[500], Colors.emerald[600]]}
                                         style={styles.btnGradient}
                                     >
                                         <Radio color="#ffffff" size={20} />
@@ -290,7 +290,7 @@ export default function LiveMuaalemModal({ visible, onClose, surahName, surahNum
                             ) : (
                                 <TouchableOpacity style={styles.stopBtn} onPress={handleStopSession}>
                                     <LinearGradient
-                                        colors={['#ef4444', '#dc2626']}
+                                        colors={[Colors.error, '#dc2626']}
                                         style={styles.btnGradient}
                                     >
                                         <MicOff color="#ffffff" size={20} />
@@ -340,15 +340,15 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         borderRadius: BorderRadius.full,
         borderWidth: 1,
-        borderColor: '#10b981',
+        borderColor: Colors.emerald[500],
         gap: 6,
     },
     liveTagStreaming: {
         backgroundColor: 'rgba(16, 185, 129, 0.35)',
-        borderColor: '#34d399',
+        borderColor: Colors.emerald[400],
     },
     liveTagText: {
-        color: '#10b981',
+        color: Colors.emerald[500],
         fontSize: 12,
         fontFamily: Typography.fontFamily.arabicBold,
     },
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     statusText: {
-        color: '#f59e0b',
+        color: Colors.gold[500],
         fontSize: 15,
         fontFamily: Typography.fontFamily.arabic,
         textAlign: 'center',
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
         marginBottom: 6,
     },
     feedbackTitle: {
-        color: '#f59e0b',
+        color: Colors.gold[500],
         fontSize: 14,
         fontFamily: Typography.fontFamily.arabicBold,
     },

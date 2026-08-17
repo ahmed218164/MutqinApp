@@ -12,7 +12,6 @@ import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect } from 'expo-router';
 import { AlertCircle, Trash2 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants/theme';
-import { useThemeColors } from '../../constants/dynamicTheme';
 import Card from '../../components/ui/Card';
 import ModernBackground from '../../components/ui/ModernBackground';
 import { supabase } from '../../lib/supabase';
@@ -63,6 +62,7 @@ export default function MistakesScreen() {
     const [mistakes, setMistakes] = React.useState<Mistake[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [refreshing, setRefreshing] = React.useState(false);
+    const [loadError, setLoadError] = React.useState(false);
 
     useFocusEffect(
         React.useCallback(() => {
@@ -72,6 +72,7 @@ export default function MistakesScreen() {
 
     async function loadMistakes() {
         setLoading(true);  // Always reset loading flag on each load
+        setLoadError(false);
         try {
             if (!user) {
                 setLoading(false);
@@ -88,6 +89,9 @@ export default function MistakesScreen() {
             setMistakes(data || []);
         } catch (error) {
             console.error('Error loading mistakes:', error);
+            if (mistakes.length === 0) {
+                setLoadError(true);
+            }
         } finally {
             setLoading(false);
         }
@@ -171,6 +175,8 @@ export default function MistakesScreen() {
                         <TouchableOpacity
                             onPress={() => confirmDeleteMistake(item.id)}
                             style={styles.deleteButton}
+                            accessibilityRole="button"
+                            accessibilityLabel={`حذف خطأ سورة ${surahName} آية ${item.verse}`}
                         >
                             <Trash2 size={20} color={Colors.error} />
                         </TouchableOpacity>
@@ -220,6 +226,22 @@ export default function MistakesScreen() {
                             </Card>
                         ))}
                     </View>
+                ) : loadError ? (
+                    <View>
+                        <EmptyState
+                            title="تعذّر تحميل الأخطاء"
+                            message="تحقق من اتصالك بالإنترنت وحاول مرة أخرى"
+                            icon={<AlertCircle size={64} color={Colors.gold[400]} />}
+                        />
+                        <TouchableOpacity
+                            style={styles.retryButton}
+                            onPress={loadMistakes}
+                            accessibilityRole="button"
+                            accessibilityLabel="إعادة المحاولة"
+                        >
+                            <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.3}>إعادة المحاولة</Text>
+                        </TouchableOpacity>
+                    </View>
                 ) : mistakes.length === 0 ? (
                     <EmptyState
                         title="لا توجد أخطاء بعد! 🎉"
@@ -267,6 +289,7 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize['3xl'],
         fontWeight: Typography.fontWeight.bold,
         color: Colors.text.inverse,
+        fontFamily: Typography.fontFamily.arabicBold,
         marginBottom: Spacing.xs,
     },
     subtitle: {
@@ -319,7 +342,7 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.sm,
         fontWeight: Typography.fontWeight.semibold,
         color: Colors.gold[400],
-        marginLeft: Spacing.sm,   // RTL: was marginRight
+        marginEnd: Spacing.sm,   // RTL: was marginRight
         minWidth: 70,
         textAlign: 'right',
     },
@@ -332,5 +355,23 @@ const styles = StyleSheet.create({
         fontSize: Typography.fontSize.xs,
         color: Colors.text.tertiary,
         marginTop: Spacing.sm,
+    },
+    retryButton: {
+        alignSelf: 'center',
+        marginTop: Spacing.md,
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.full,
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.35)',
+        minWidth: 140,
+    },
+    retryButtonText: {
+        color: Colors.emerald[300],
+        fontSize: Typography.fontSize.base,
+        fontWeight: '600',
+        fontFamily: Typography.fontFamily.arabicBold,
+        textAlign: 'center',
     },
 });

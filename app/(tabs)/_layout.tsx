@@ -1,57 +1,8 @@
 import { Tabs } from 'expo-router';
 import { Home, BookOpen, Target, AlertCircle, User } from 'lucide-react-native';
 import FloatingTabBar from '../../components/navigation/FloatingTabBar';
-import * as React from 'react';
-import { useAuth } from '../../lib/auth';
-import { supabase } from '../../lib/supabase';
-import { checkHasPlan } from '../../lib/plan-check';
 
 export default function TabLayout() {
-    const { user } = useAuth();
-
-    // null = loading | true = has plan | false = no plan
-    const [hasPlan, setHasPlan] = React.useState<boolean | null>(null);
-
-    React.useEffect(() => {
-        if (!user) return;
-
-        // ── Initial check ─────────────────────────────────────────────────────
-        async function checkPlan() {
-            const result = await checkHasPlan(user!.id);
-            setHasPlan(result);
-        }
-        checkPlan();
-
-        // ── Realtime subscription: re-check whenever user_plans changes ───────
-        const channel = supabase
-            .channel(`user-plans-${user.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'user_plans',
-                    filter: `user_id=eq.${user.id}`,
-                },
-                () => { checkPlan(); }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'memorization_plan',
-                    filter: `user_id=eq.${user.id}`,
-                },
-                () => { checkPlan(); }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [user]);
-
     return (
         <Tabs
             tabBar={(props) => <FloatingTabBar {...props} />}
@@ -112,7 +63,6 @@ export default function TabLayout() {
                 }}
             />
 
-            {/* Hidden screens (not shown in tab bar) */}
         </Tabs>
     );
 }

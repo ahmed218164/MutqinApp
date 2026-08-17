@@ -422,7 +422,7 @@ export default function PlanScreen() {
                             <Text style={styles.legacyBannerTitle}>🎉 مرحباً مجدداً!</Text>
                             <Text style={styles.legacyBannerText}>
                                 تم ترقية خطتك تلقائياً استناداً لبياناتك السابقة.{'\n'}
-                                ورد يومي حالي: <Text style={{ color: '#34d399', fontWeight: '700' }}>{legacyDailyPages} صفحة/يوم</Text>
+                                ورد يومي حالي: <Text style={{ color: Colors.emerald[400], fontWeight: '700' }}>{legacyDailyPages} صفحة/يوم</Text>
                             </Text>
                             <Text style={styles.legacyBannerSub}>
                                 يمكنك تعديل المعلومات أدناه وإعادة توليد الخطة إذا أردت.

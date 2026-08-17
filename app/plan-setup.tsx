@@ -48,7 +48,7 @@ const DIRECTIONS: Array<{
         subtitle: 'الفاتحة ← الناس',
         description: 'ابدأ من سورة الفاتحة وتقدم نحو سورة الناس. الطريقة الأكثر شيوعاً.',
         icon: <ArrowRight color={Colors.emerald[400]} size={28} />,
-        gradient: ['#022c22', '#065f46', '#0f766e'],
+        gradient: [Colors.emerald[950], Colors.emerald[800], '#0f766e'],
     },
     {
         key: 'backward',
@@ -56,7 +56,7 @@ const DIRECTIONS: Array<{
         subtitle: 'الناس ← الفاتحة',
         description: 'ابدأ من سورة الناس وتقدم نحو سورة الفاتحة. مناسب لمن يريد الجزء الثلاثين أولاً.',
         icon: <ArrowLeft color={Colors.gold[400]} size={28} />,
-        gradient: ['#1c0e00', '#78350f', '#b45309'],
+        gradient: ['#1c0e00', Colors.gold[900], Colors.gold[700]],
     },
     {
         key: 'both',
@@ -145,7 +145,7 @@ export default function PlanSetupScreen() {
     const canProceed = step === 1 || step === 2 || step === 3;
 
     return (
-        <LinearGradient colors={['#020617', '#0f172a', '#020617']} style={styles.root}>
+        <LinearGradient colors={[Colors.neutral[950], Colors.neutral[900], Colors.neutral[950]]} style={styles.root}>
             <StatusBar barStyle="light-content" />
             <SafeAreaView style={styles.safe}>
 
@@ -227,7 +227,7 @@ export default function PlanSetupScreen() {
                     {step < 3 ? (
                         <TouchableOpacity style={styles.nextBtn} onPress={goNext}>
                             <LinearGradient
-                                colors={['#059669', '#10b981', '#34d399']}
+                                colors={[Colors.emerald[600], Colors.emerald[500], Colors.emerald[400]]}
                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                                 style={styles.nextGradient}
                             >
@@ -242,7 +242,7 @@ export default function PlanSetupScreen() {
                             disabled={saving}
                         >
                             <LinearGradient
-                                colors={['#d97706', '#f59e0b', '#fbbf24']}
+                                colors={[Colors.gold[600], Colors.gold[500], Colors.gold[400]]}
                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                                 style={styles.nextGradient}
                             >

@@ -41,8 +41,10 @@ export default function Index() {
     }
 
     if (user) {
+        // New users without a memorization plan land on the setup wizard;
+        // everyone else goes straight to the main tabs.
         if (hasPlan === false) {
-            return <Redirect href="/(tabs)" />;
+            return <Redirect href="/plan-setup" />;
         }
         return <Redirect href="/(tabs)" />;
     }

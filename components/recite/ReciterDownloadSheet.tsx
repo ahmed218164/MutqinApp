@@ -22,7 +22,6 @@ import {
     TouchableOpacity,
     ScrollView,
     ActivityIndicator,
-    Alert,
     TouchableWithoutFeedback,
 } from 'react-native';
 import Animated, {
@@ -48,6 +47,7 @@ import {
 } from '../../lib/audio-download-manager';
 import { hasTimingDb, downloadTimingDb } from '../../lib/audio-timing-db';
 import { SURAHS } from '../../constants/surahs';
+import { toast } from '../ui/Toast';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -69,9 +69,9 @@ interface SurahRow {
 function StatusIcon({ status }: { status: DownloadStatus }) {
     switch (status) {
         case 'done':
-            return <CheckCircle size={16} color="#10B981" />;
+            return <CheckCircle size={16} color={Colors.emerald[500]} />;
         case 'error':
-            return <AlertCircle size={16} color="#EF4444" />;
+            return <AlertCircle size={16} color={Colors.error} />;
         case 'cancelled':
             return <X size={16} color="#6B7280" />;
         case 'downloading':
@@ -173,7 +173,7 @@ export default function ReciterDownloadSheet({ visible, reciter, surahAyahCounts
                 setDownloadedCount(done);
             });
         } catch (e: any) {
-            Alert.alert('خطأ', `فشل التنزيل: ${e?.message}`);
+            toast.error(`فشل التنزيل: ${e?.message}`);
         } finally {
             setIsDownloadingAll(false);
         }
@@ -190,7 +190,7 @@ export default function ReciterDownloadSheet({ visible, reciter, surahAyahCounts
         try {
             await downloadSurahPack(reciter, surah, onProgress);
         } catch (e: any) {
-            Alert.alert('خطأ', `فشل تنزيل السورة ${surah}: ${e?.message}`);
+            toast.error(`فشل تنزيل السورة ${surah}: ${e?.message}`);
         }
     }
 
@@ -201,7 +201,7 @@ export default function ReciterDownloadSheet({ visible, reciter, surahAyahCounts
             await downloadTimingDb(reciter);
             setHasDb(true);
         } catch (e: any) {
-            Alert.alert('خطأ', `فشل تنزيل قاعدة التوقيت: ${e?.message}`);
+            toast.error(`فشل تنزيل قاعدة التوقيت: ${e?.message}`);
         } finally {
             setDbDownloading(false);
         }
@@ -238,7 +238,7 @@ export default function ReciterDownloadSheet({ visible, reciter, surahAyahCounts
                 {/* Timing DB row (gapless only) */}
                 {reciter.audioType === 'gapless' && (
                     <View style={styles.dbRow}>
-                        <Database size={16} color={hasDb ? '#10B981' : Colors.gold[400]} />
+                        <Database size={16} color={hasDb ? Colors.emerald[500] : Colors.gold[400]} />
                         <Text style={styles.dbText}>
                             {hasDb ? 'قاعدة التوقيت: متوفرة ✓' : 'قاعدة التوقيت للتشغيل المتواصل'}
                         </Text>

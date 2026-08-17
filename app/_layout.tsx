@@ -12,6 +12,7 @@ import { SettingsProvider } from '../lib/settings';
 import { NetworkProvider } from '../lib/network';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 import NetworkBanner from '../components/ui/NetworkBanner';
+import { ToastProvider } from '../components/ui/Toast';
 import { registerForPushNotifications, savePushToken } from '../lib/notifications';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -98,6 +99,7 @@ export default function RootLayout() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <BottomSheetModalProvider>
+            <ToastProvider>
             <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
                 <ErrorBoundary>
                     {/* AyatSQLiteProvider bootstraps ayat.db once from bundled assets,
@@ -129,6 +131,7 @@ export default function RootLayout() {
                     </AyatSQLiteProvider>
                 </ErrorBoundary>
             </View>
+            </ToastProvider>
             </BottomSheetModalProvider>
         </GestureHandlerRootView>
     );

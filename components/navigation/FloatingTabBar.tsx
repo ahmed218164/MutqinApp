@@ -116,7 +116,7 @@ function TabItem({
                 })}
             </Animated.View>
 
-            <Animated.Text style={[styles.label, labelStyle]}>
+            <Animated.Text style={[styles.label, labelStyle]} maxFontSizeMultiplier={1.15}>
                 {typeof label === 'string' ? label : ''}
             </Animated.Text>
 
@@ -218,7 +218,9 @@ const styles = StyleSheet.create({
         shadowRadius: 18,
     },
     containerElevation: {
-        elevation: 24,
+        // High elevations force an expensive shadow pass on Android; 8 keeps
+        // the lift visible at a fraction of the overdraw cost of 24.
+        elevation: 8,
     },
     androidFallback: {
         backgroundColor: 'rgba(8, 13, 24, 0.97)',
@@ -261,11 +263,12 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     label: {
-        fontSize: 10.5,
+        fontSize: 12,
         color: Colors.emerald[200],
         fontWeight: '700' as const,
         marginTop: 3,
         letterSpacing: 0,
+        fontFamily: Typography.fontFamily.arabicBold,
         zIndex: 2,
         // Removed textTransform: 'uppercase' — breaks Arabic text rendering
     },

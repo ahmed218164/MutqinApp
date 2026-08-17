@@ -53,7 +53,7 @@ const SANCTUARY = {
         primary: '#E8E6E1',     // warm white
         secondary: '#6B7A8D',
         primaryLight: '#1A1A2E',
-        secondaryLight: '#64748B',
+        secondaryLight: Colors.neutral[500],
     },
     pill: {
         radius: 28,
@@ -88,7 +88,7 @@ export interface UnifiedAudioControlProps {
     onStopRecording: () => void;
     analyzing: boolean;
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
-    recordingDuration?: number;
+    elapsedSecondsShared?: SharedValue<number>;
     // VAD props
     meterHistoryShared?: SharedValue<number[]>;
     chunksSent?: number;
@@ -162,7 +162,7 @@ function UnifiedAudioControlInner({
     onStopRecording,
     analyzing,
     uploadStep = 'idle',
-    recordingDuration = 0,
+    elapsedSecondsShared,
     meterHistoryShared,
     chunksSent = 0,
     chunksCompleted = 0,
@@ -585,7 +585,7 @@ function UnifiedAudioControlInner({
                                 onStopRecording={onStopRecording}
                                 analyzing={analyzing}
                                 uploadStep={uploadStep}
-                                recordingDuration={recordingDuration}
+                                elapsedSecondsShared={elapsedSecondsShared}
                                 accentColor={accentColor}
                                 meterHistoryShared={meterHistoryShared}
                                 chunksSent={chunksSent}
@@ -659,8 +659,8 @@ const styles = StyleSheet.create({
         color: SANCTUARY.text.secondary,
     },
     verseBadge: {
-        marginLeft: 'auto',
-        marginRight: 4,
+        marginEnd: 'auto',
+        marginStart: 4,
         backgroundColor: 'rgba(255,255,255,0.06)',
         paddingHorizontal: 8,
         paddingVertical: 3,
@@ -753,7 +753,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        marginLeft: 'auto',
+        marginEnd: 'auto',
     },
     miniChip: {
         flexDirection: 'row',

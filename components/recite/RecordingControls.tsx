@@ -26,6 +26,30 @@ import { mediumImpact } from '../../lib/haptics';
 
 const WAVEFORM_BAR_COUNT = 20;
 
+// ── Elapsed timer: isolated leaf so the once-per-second text update ─────────
+// re-renders ONLY this component, never the whole recite screen.
+function formatElapsedWorklet(seconds: number): string {
+    'worklet';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+function TimerText({ elapsedShared, style }: { elapsedShared: SharedValue<number>; style: object }) {
+    const [label, setLabel] = React.useState('0:00');
+    const lastLabel = useSharedValue('0:00');
+
+    useDerivedValue(() => {
+        const next = formatElapsedWorklet(elapsedShared.value);
+        if (next !== lastLabel.value) {
+            lastLabel.value = next;
+            runOnJS(setLabel)(next);
+        }
+    });
+
+    return <Text style={style}>{`تسجيل: ${label}`}</Text>;
+}
+
 interface AnimatedWaveformBarProps {
     index: number;
     meterHistoryShared: SharedValue<number[]>;
@@ -60,7 +84,8 @@ interface RecordingControlsProps {
     analyzing: boolean;
     /** Detailed upload progress step for user feedback */
     uploadStep?: 'idle' | 'uploading' | 'analyzing' | 'saving';
-    recordingDuration?: number;
+    /** Elapsed session seconds as a Reanimated SharedValue (zero-jank updates) */
+    elapsedSecondsShared?: SharedValue<number>;
     accentColor: string;
     /** Real-time metering history (0-1 normalised), Reanimated SharedValue for zero-jank updates */
     meterHistoryShared?: SharedValue<number[]>;
@@ -78,7 +103,7 @@ export default function RecordingControls({
     onStopRecording,
     analyzing,
     uploadStep = 'idle',
-    recordingDuration = 0,
+    elapsedSecondsShared,
     accentColor,
     meterHistoryShared,
     chunksSent = 0,
@@ -133,12 +158,6 @@ export default function RecordingControls({
         } else if (!analyzing && !isFinishing) {
             onStartRecording();
         }
-    };
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     // ── Finishing state (waiting for chunk results) ───────────────────────────
@@ -278,9 +297,13 @@ export default function RecordingControls({
 
             {/* Recording Status */}
             <View style={styles.statusContainer}>
-                <Text style={styles.statusText}>
-                    {recording ? `تسجيل: ${formatTime(recordingDuration)}` : 'اضغط للتسجيل'}
-                </Text>
+                {recording && elapsedSecondsShared ? (
+                    <TimerText elapsedShared={elapsedSecondsShared} style={styles.statusText} />
+                ) : (
+                    <Text style={styles.statusText}>
+                        {recording ? 'جارٍ التسجيل…' : 'اضغط للتسجيل'}
+                    </Text>
+                )}
                 {recording && (
                     <Text style={styles.hintText}>
                         يتم تقطيع الصوت تلقائياً عند السكوت • اضغط ■ للإنهاء

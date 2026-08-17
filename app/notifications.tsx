@@ -8,7 +8,6 @@ import {
     ScrollView,
     TouchableOpacity,
     Platform,
-    Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Bell, Clock, Award, BookOpen } from 'lucide-react-native';
@@ -23,6 +22,7 @@ import {
     NotificationSettings
 } from '../lib/notifications';
 import { useAuth } from '../lib/auth';
+import { toast } from '../components/ui/Toast';
 
 export default function NotificationSettingsScreen() {
     const router = useRouter();
@@ -217,8 +217,8 @@ export default function NotificationSettingsScreen() {
                     style={styles.testButton}
                     onPress={async () => {
                         const token = await registerForPushNotifications();
-                        if (token) Alert.alert('✅ تم', 'تم تفعيل الإشعارات بنجاح!');
-                        else Alert.alert('خطأ', 'تعذّر الحصول على إذن الإشعارات');
+                        if (token) toast.success('تم تفعيل الإشعارات بنجاح!');
+                        else toast.error('تعذّر الحصول على إذن الإشعارات');
                     }}
                 >
                     <Text style={styles.testButtonText}>اختبار صلاحيات الإشعارات</Text>
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     backButton: {
-        marginRight: Spacing.md,
+        marginStart: Spacing.md,
     },
     title: {
         fontSize: Typography.fontSize['2xl'],
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
         backgroundColor: StaticColors.neutral[100],
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: Spacing.md,
+        marginStart: Spacing.md,
     },
     settingLabel: {
         fontSize: Typography.fontSize.base,
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     timePeriod: {
         fontSize: Typography.fontSize.base,
         fontWeight: '700' as const,
-        marginRight: Spacing.sm,
+        marginStart: Spacing.sm,
     },
     testButton: {
         marginTop: Spacing.lg,
